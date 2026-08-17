@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2 - 2026-08-17
+
+- Emit standards-compliant relative ESM specifiers so the server package loads
+  directly in Node and Cloudflare Workers Vitest without consumer bundling.
+
 ## 0.1.1 - 2026-08-17
 
 - Build the server package during Git dependency installation so monorepo

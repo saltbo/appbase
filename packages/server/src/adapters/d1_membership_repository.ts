@@ -1,5 +1,5 @@
-import type { MembershipGrant } from "../domain/membership";
-import type { MembershipRepository } from "../usecases/membership_ports";
+import type { MembershipGrant } from "../domain/membership.js";
+import type { MembershipRepository } from "../usecases/membership_ports.js";
 
 type GrantRow = {
   plan_id: string;

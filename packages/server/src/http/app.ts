@@ -1,20 +1,20 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 
-import { InvalidCursorError } from "../domain/cursor";
-import type { JsonObject, SyncMutation } from "../domain/sync";
+import { InvalidCursorError } from "../domain/cursor.js";
+import type { JsonObject, SyncMutation } from "../domain/sync.js";
 import {
   MembershipService,
   type MembershipConfig,
-} from "../usecases/membership";
-import type { MembershipRepository } from "../usecases/membership_ports";
+} from "../usecases/membership.js";
+import type { MembershipRepository } from "../usecases/membership_ports.js";
 import {
   AuthenticationError,
   AuthorizationError,
   type Principal,
   SyncConflictError,
-} from "../usecases/ports";
-import { pullChanges, pushMutations, type SyncDeps } from "../usecases/sync";
+} from "../usecases/ports.js";
+import { pullChanges, pushMutations, type SyncDeps } from "../usecases/sync.js";
 
 export const APPBASE_PROTOCOL_VERSION = "2026-08-17";
 

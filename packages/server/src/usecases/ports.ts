@@ -1,4 +1,4 @@
-import type { JsonObject, StoredVersion } from "../domain/sync";
+import type { JsonObject, StoredVersion } from "../domain/sync.js";
 
 export type AppendVersionInput = Omit<StoredVersion, "sequence"> & {
   expectedRevision: string | null;

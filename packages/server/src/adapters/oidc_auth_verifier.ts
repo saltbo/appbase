@@ -4,7 +4,7 @@ import {
   AuthenticationError,
   type AuthVerifier,
   type Principal,
-} from "../usecases/ports";
+} from "../usecases/ports.js";
 
 type DiscoveryDocument = {
   issuer: string;

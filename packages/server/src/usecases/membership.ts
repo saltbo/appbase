@@ -3,8 +3,8 @@ import {
   type CapabilityDefinition,
   type MembershipPlan,
   type MembershipSnapshot,
-} from "../domain/membership";
-import type { MembershipRepository } from "./membership_ports";
+} from "../domain/membership.js";
+import type { MembershipRepository } from "./membership_ports.js";
 
 export type MembershipConfig = {
   freePlan: MembershipPlan;

@@ -1,4 +1,4 @@
-import { decodeCursor, encodeCursor } from "../domain/cursor";
+import { decodeCursor, encodeCursor } from "../domain/cursor.js";
 import {
   defaultThreeWayMerge,
   type JsonObject,
@@ -7,12 +7,12 @@ import {
   type StoredVersion,
   type SyncChange,
   type SyncMutation,
-} from "../domain/sync";
+} from "../domain/sync.js";
 import {
   type SecretCodec,
   type SyncRepository,
   SyncConflictError,
-} from "./ports";
+} from "./ports.js";
 
 export type SyncDeps = {
   repository: SyncRepository;

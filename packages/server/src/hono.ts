@@ -2,4 +2,4 @@ export {
   createAppBase,
   type AppBasePublicConfig,
   type AppBaseHttpOptions,
-} from "./http/app";
+} from "./http/app.js";

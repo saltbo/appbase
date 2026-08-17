@@ -5,9 +5,9 @@ export {
   type MembershipGrant,
   type MembershipPlan,
   type MembershipSnapshot,
-} from "./domain/membership";
+} from "./domain/membership.js";
 export {
   MembershipService,
   type MembershipConfig,
-} from "./usecases/membership";
-export type { MembershipRepository } from "./usecases/membership_ports";
+} from "./usecases/membership.js";
+export type { MembershipRepository } from "./usecases/membership_ports.js";

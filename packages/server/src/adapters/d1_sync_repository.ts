@@ -1,5 +1,5 @@
-import type { StoredVersion } from "../domain/sync";
-import type { AppendVersionInput, SyncRepository } from "../usecases/ports";
+import type { StoredVersion } from "../domain/sync.js";
+import type { AppendVersionInput, SyncRepository } from "../usecases/ports.js";
 
 type RecordRow = {
   sequence: number;

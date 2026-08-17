@@ -1,4 +1,4 @@
-export { defaultThreeWayMerge } from "./domain/sync";
+export { defaultThreeWayMerge } from "./domain/sync.js";
 export {
   MembershipLimitError,
   type CapabilityDefinition,
@@ -6,12 +6,12 @@ export {
   type MembershipGrant,
   type MembershipPlan,
   type MembershipSnapshot,
-} from "./domain/membership";
+} from "./domain/membership.js";
 export {
   MembershipService,
   type MembershipConfig,
-} from "./usecases/membership";
-export type { MembershipRepository } from "./usecases/membership_ports";
+} from "./usecases/membership.js";
+export type { MembershipRepository } from "./usecases/membership_ports.js";
 export type {
   JsonObject,
   JsonValue,
@@ -19,17 +19,17 @@ export type {
   PullResult,
   SyncChange,
   SyncMutation,
-} from "./domain/sync";
+} from "./domain/sync.js";
 export type {
   AuthVerifier,
   Principal,
   SecretCodec,
   SyncRepository,
-} from "./usecases/ports";
+} from "./usecases/ports.js";
 export {
   AuthenticationError,
   AuthorizationError,
   SyncConflictError,
-} from "./usecases/ports";
-export type { SyncDeps } from "./usecases/sync";
-export { pullChanges, pushMutations } from "./usecases/sync";
+} from "./usecases/ports.js";
+export type { SyncDeps } from "./usecases/sync.js";
+export { pullChanges, pushMutations } from "./usecases/sync.js";

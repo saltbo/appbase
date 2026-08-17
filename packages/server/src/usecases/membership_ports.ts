@@ -1,4 +1,4 @@
-import type { MembershipGrant } from "../domain/membership";
+import type { MembershipGrant } from "../domain/membership.js";
 
 export interface MembershipRepository {
   activeGrant(ownerSub: string, now: string): Promise<MembershipGrant | null>;

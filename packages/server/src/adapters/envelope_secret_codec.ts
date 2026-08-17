@@ -1,5 +1,5 @@
-import type { JsonObject } from "../domain/sync";
-import type { SecretCodec } from "../usecases/ports";
+import type { JsonObject } from "../domain/sync.js";
+import type { SecretCodec } from "../usecases/ports.js";
 
 type UserKeyRow = {
   wrapped_key: string;
