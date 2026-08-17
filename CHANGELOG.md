@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 - 2026-08-17
+
+- Build the server package during Git dependency installation so monorepo
+  subdirectory consumers receive every declared JavaScript and type export.
+
 ## 0.1.0 - 2026-08-17
 
 - Introduce the date-versioned AppBase HTTP protocol and conformance fixtures.
