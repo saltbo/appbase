@@ -1,0 +1,14 @@
+name: appbase_drift
+description: Transaction-safe Drift persistence and outbox for AppBase clients.
+version: 0.1.0
+resolution: workspace
+repository: https://github.com/saltbo/appbase
+issue_tracker: https://github.com/saltbo/appbase/issues
+environment:
+  sdk: ^3.8.0
+dependencies:
+  appbase_client: ^0.1.0
+  drift: ^2.28.2
+dev_dependencies:
+  sqlite3: ^2.9.0
+  test: ^1.26.0

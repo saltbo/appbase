@@ -1,0 +1,3 @@
+templates/cloudflare-worker/worker-configuration.d.ts
+packages/server/dist
+packages/server/coverage

@@ -1,0 +1,7 @@
+{
+  "name": "independent property changes are combined",
+  "ancestor": { "title": "Before", "enabled": false },
+  "server": { "title": "Server", "enabled": false },
+  "client": { "title": "Before", "enabled": true },
+  "expected": { "title": "Server", "enabled": true }
+}

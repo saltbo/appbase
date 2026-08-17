@@ -1,0 +1,22 @@
+{
+  "name": "appbase-cloudflare-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "wrangler deploy --dry-run",
+    "check": "tsc --noEmit && wrangler deploy --dry-run",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types"
+  },
+  "dependencies": {
+    "@saltbo/appbase-server": "workspace:*",
+    "hono": "4.12.29"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.13",
+    "typescript": "6.0.2",
+    "wrangler": "4.123.0"
+  }
+}

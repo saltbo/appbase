@@ -1,0 +1,54 @@
+{
+  "name": "@saltbo/appbase-server",
+  "version": "0.1.0",
+  "description": "Cloudflare-native server framework for AppBase local-first synchronization",
+  "type": "module",
+  "files": [
+    "dist",
+    "migrations"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./cloudflare": {
+      "types": "./dist/cloudflare.d.ts",
+      "import": "./dist/cloudflare.js"
+    },
+    "./hono": {
+      "types": "./dist/hono.d.ts",
+      "import": "./dist/hono.js"
+    },
+    "./membership": {
+      "types": "./dist/membership.d.ts",
+      "import": "./dist/membership.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "hono": "4.12.29",
+    "jose": "6.2.3",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "4.1.10",
+    "@cloudflare/workers-types": "5.20260712.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saltbo/appbase.git",
+    "directory": "packages/server"
+  }
+}

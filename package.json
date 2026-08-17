@@ -1,0 +1,21 @@
+{
+  "name": "appbase-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.30.2",
+  "scripts": {
+    "build": "pnpm --filter @saltbo/appbase-server build",
+    "format:check": "prettier --check 'packages/server/**/*.{ts,json}' 'templates/cloudflare-worker/**/*.{ts,json,jsonc}' 'protocol/**/*.{yaml,json}'",
+    "protocol:check": "redocly lint protocol/openapi.yaml",
+    "template:check": "pnpm build && pnpm --filter appbase-cloudflare-worker check",
+    "test": "pnpm --filter @saltbo/appbase-server test",
+    "test:coverage": "pnpm --filter @saltbo/appbase-server test:coverage",
+    "typecheck": "pnpm --filter @saltbo/appbase-server typecheck",
+    "verify": "./scripts/verify.sh"
+  },
+  "devDependencies": {
+    "@redocly/cli": "2.9.0",
+    "prettier": "3.6.2"
+  }
+}

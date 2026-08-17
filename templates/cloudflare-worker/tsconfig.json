@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["./worker-configuration.d.ts", "./appbase-secrets.d.ts"]
+  },
+  "include": [
+    "src/**/*.ts",
+    "worker-configuration.d.ts",
+    "appbase-secrets.d.ts"
+  ]
+}

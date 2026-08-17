@@ -1,0 +1,23 @@
+{
+  "name": "lexicographic conflict order keeps the greater complete payload",
+  "ancestor": {
+    "progressEpoch": 0,
+    "positionMilliseconds": 1000,
+    "_sync": { "conflictOrder": ["progressEpoch", "positionMilliseconds"] }
+  },
+  "server": {
+    "progressEpoch": 0,
+    "positionMilliseconds": 60000,
+    "_sync": { "conflictOrder": ["progressEpoch", "positionMilliseconds"] }
+  },
+  "client": {
+    "progressEpoch": 0,
+    "positionMilliseconds": 50000,
+    "_sync": { "conflictOrder": ["progressEpoch", "positionMilliseconds"] }
+  },
+  "expected": {
+    "progressEpoch": 0,
+    "positionMilliseconds": 60000,
+    "_sync": { "conflictOrder": ["progressEpoch", "positionMilliseconds"] }
+  }
+}

@@ -1,0 +1,9 @@
+# Changelog
+
+## 0.1.0 - 2026-08-17
+
+- Introduce the date-versioned AppBase HTTP protocol and conformance fixtures.
+- Add the Cloudflare/Hono/D1 server, OIDC verification, per-user envelope
+  encryption, membership primitives, and deployable Worker template.
+- Add the pure Dart client and sync engine, transaction-safe Drift persistence,
+  and Flutter lifecycle, secure installation identity, and OIDC adapters.

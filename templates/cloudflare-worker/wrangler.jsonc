@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "appbase",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+  },
+  "vars": {
+    "APPBASE_ISSUER": "https://identity.example.com",
+    "APPBASE_CLIENT_ID": "your-public-client-id",
+    "APPBASE_AUDIENCE": "https://api.example.com",
+  },
+  "d1_databases": [
+    {
+      "binding": "APPBASE_DB",
+      "database_name": "appbase",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+}

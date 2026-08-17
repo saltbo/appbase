@@ -1,0 +1,391 @@
+openapi: 3.1.0
+info:
+  title: AppBase Synchronization API
+  version: "2026-08-17"
+  description: Cloudflare-native private record synchronization protocol.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: https://{worker}.workers.dev
+    variables:
+      worker:
+        default: appbase
+        description: Your deployed Cloudflare Worker hostname prefix.
+security:
+  - oauth2: [appbase:read, appbase:write]
+paths:
+  /appbase/client-configuration:
+    get:
+      summary: Get AppBase client configuration
+      operationId: getClientConfiguration
+      security: []
+      responses:
+        "200":
+          description: Runtime client configuration and supported limits.
+          headers:
+            Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientConfiguration"
+        "400":
+          $ref: "#/components/responses/Problem"
+  /appbase/mutation-batches/{batchId}:
+    put:
+      summary: Idempotently apply a mutation batch
+      operationId: replaceMutationBatch
+      parameters:
+        - $ref: "#/components/parameters/ApiVersion"
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Identifier"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [mutations]
+              properties:
+                mutations:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items:
+                    $ref: "#/components/schemas/Mutation"
+      responses:
+        "200":
+          description: The idempotently applied mutation batch.
+          headers:
+            API-Version:
+              $ref: "#/components/headers/ApiVersion"
+            Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MutationBatch"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "413":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+  /appbase/changes:
+    get:
+      summary: List ordered account changes
+      operationId: listChanges
+      parameters:
+        - $ref: "#/components/parameters/ApiVersion"
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+        - name: pageToken
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One ordered snapshot page of changes.
+          headers:
+            API-Version:
+              $ref: "#/components/headers/ApiVersion"
+            Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeCollection"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+  /appbase/account-membership:
+    get:
+      summary: Get the account membership snapshot
+      operationId: getAccountMembership
+      parameters:
+        - $ref: "#/components/parameters/ApiVersion"
+      responses:
+        "200":
+          description: The authenticated account membership snapshot.
+          headers:
+            API-Version:
+              $ref: "#/components/headers/ApiVersion"
+            Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://id.example.com/authorize
+          tokenUrl: https://id.example.com/token
+          scopes:
+            appbase:read: Read synchronized account records.
+            appbase:write: Write synchronized account records.
+  parameters:
+    ApiVersion:
+      name: API-Version
+      in: header
+      required: true
+      schema:
+        type: string
+        const: "2026-08-17"
+  headers:
+    ApiVersion:
+      schema:
+        type: string
+        const: "2026-08-17"
+    RequestId:
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    Problem:
+      description: RFC 9457 problem response.
+      headers:
+        Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    Identifier:
+      type: string
+      minLength: 1
+      maxLength: 200
+      pattern: "^[A-Za-z0-9._:-]+$"
+    JsonObject:
+      type: object
+      additionalProperties: true
+    ClientConfiguration:
+      type: object
+      additionalProperties: false
+      required:
+        - protocolVersions
+        - issuer
+        - clientId
+        - audience
+        - usesResourceIndicator
+        - acceptsDynamicCollections
+        - encryptsAllPayloads
+        - maxMutationsPerBatch
+        - maxChangesPerPage
+        - maxPayloadBytes
+        - links
+      properties:
+        protocolVersions:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        issuer:
+          type: string
+          format: uri
+        clientId:
+          type: string
+        audience:
+          type: string
+          format: uri
+        usesResourceIndicator:
+          type: boolean
+        acceptsDynamicCollections:
+          type: boolean
+          const: true
+        encryptsAllPayloads:
+          type: boolean
+          const: true
+        maxMutationsPerBatch:
+          type: integer
+          minimum: 1
+        maxChangesPerPage:
+          type: integer
+          minimum: 1
+        maxPayloadBytes:
+          type: integer
+          minimum: 1
+        links:
+          type: object
+          additionalProperties:
+            type: string
+            format: uri
+    Mutation:
+      oneOf:
+        - $ref: "#/components/schemas/PutMutation"
+        - $ref: "#/components/schemas/DeleteMutation"
+    PutMutation:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          mutationId,
+          deviceId,
+          collection,
+          recordId,
+          baseRevision,
+          operation,
+          payload,
+        ]
+      properties:
+        mutationId:
+          $ref: "#/components/schemas/Identifier"
+        deviceId:
+          $ref: "#/components/schemas/Identifier"
+        collection:
+          $ref: "#/components/schemas/Identifier"
+        recordId:
+          $ref: "#/components/schemas/Identifier"
+        baseRevision:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: "null"
+        operation:
+          const: put
+        payload:
+          $ref: "#/components/schemas/JsonObject"
+    DeleteMutation:
+      type: object
+      additionalProperties: false
+      required:
+        [mutationId, deviceId, collection, recordId, baseRevision, operation]
+      properties:
+        mutationId:
+          $ref: "#/components/schemas/Identifier"
+        deviceId:
+          $ref: "#/components/schemas/Identifier"
+        collection:
+          $ref: "#/components/schemas/Identifier"
+        recordId:
+          $ref: "#/components/schemas/Identifier"
+        baseRevision:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: "null"
+        operation:
+          const: delete
+    Change:
+      type: object
+      additionalProperties: false
+      required:
+        [sequence, collection, recordId, revision, payload, deleted, createdAt]
+      properties:
+        sequence:
+          type: integer
+          minimum: 1
+        collection:
+          $ref: "#/components/schemas/Identifier"
+        recordId:
+          $ref: "#/components/schemas/Identifier"
+        revision:
+          type: string
+          format: uuid
+        payload:
+          oneOf:
+            - $ref: "#/components/schemas/JsonObject"
+            - type: "null"
+        deleted:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    MutationResult:
+      type: object
+      additionalProperties: false
+      required: [mutationId, status, change]
+      properties:
+        mutationId:
+          $ref: "#/components/schemas/Identifier"
+        status:
+          enum: [applied, merged, replayed]
+        change:
+          $ref: "#/components/schemas/Change"
+    MutationBatch:
+      type: object
+      additionalProperties: false
+      required: [id, results, links]
+      properties:
+        id:
+          $ref: "#/components/schemas/Identifier"
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/MutationResult"
+        links:
+          type: object
+          required: [self]
+          properties:
+            self:
+              type: string
+              format: uri
+    ChangeCollection:
+      type: object
+      additionalProperties: false
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Change"
+        pagination:
+          type: object
+          additionalProperties: false
+          required: [pageSize, checkpoint]
+          properties:
+            pageSize:
+              type: integer
+            nextPageToken:
+              type: string
+            checkpoint:
+              type: string
+    Problem:
+      type: object
+      additionalProperties: true
+      required: [type, title, status, detail, instance, code, requestId]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        code:
+          type: string
+        requestId:
+          type: string

@@ -1,0 +1,14 @@
+.dart_tool/
+.packages
+coverage/
+dist/
+build/
+node_modules/
+.wrangler/
+.dev.vars
+*.log
+.DS_Store
+pubspec.lock
+
+# Examples are applications and keep their lock files when added.
+!examples/**/pubspec.lock

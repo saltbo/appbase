@@ -1,0 +1,12 @@
+name: appbase_client
+description: Runtime-independent AppBase protocol client and synchronization engine.
+version: 0.1.0
+resolution: workspace
+repository: https://github.com/saltbo/appbase
+issue_tracker: https://github.com/saltbo/appbase/issues
+environment:
+  sdk: ^3.8.0
+dependencies:
+  http: ^1.4.0
+dev_dependencies:
+  test: ^1.26.0
