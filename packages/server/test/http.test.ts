@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import contractFixture from "../../../protocol/fixtures/http-contract.json" with { type: "json" };
+
 import { createAppBase, type AppBasePublicConfig } from "../src/http/app";
 import type { StoredVersion } from "../src/domain/sync";
 import type {
@@ -37,11 +39,29 @@ describe("AppBase HTTP protocol", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("Request-Id")).toBe("request-1");
     expect(response.headers.get("traceparent")).toBe("00-trace-parent");
-    expect(await response.json()).toMatchObject({
-      protocolVersions: ["2026-08-17"],
-      maxMutationsPerBatch: 50,
-    });
+    expect(await response.json()).toEqual(contractFixture.configuration);
     expect(events).toHaveLength(1);
+  });
+
+  it("serves the shared TypeScript and Dart mutation contract fixture", async () => {
+    const app = appForPrincipal({ repository: new MemoryRepository() });
+    const fixture = contractFixture.mutationBatch;
+
+    const response = await app.request(
+      `/mutation-batches/${fixture.id}`,
+      {
+        method: "PUT",
+        headers: {
+          "API-Version": "2026-08-17",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(fixture.request),
+      },
+      {},
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject(fixture.response);
   });
 
   it("allows an authenticated principal to pull arbitrary collections", async () => {

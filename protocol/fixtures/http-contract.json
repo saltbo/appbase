@@ -1,0 +1,48 @@
+{
+  "configuration": {
+    "protocolVersions": ["2026-08-17"],
+    "issuer": "https://id.example/auth",
+    "clientId": "client-id",
+    "audience": "https://api.example",
+    "usesResourceIndicator": false,
+    "acceptsDynamicCollections": true,
+    "encryptsAllPayloads": true,
+    "maxMutationsPerBatch": 50,
+    "maxChangesPerPage": 500,
+    "maxPayloadBytes": 65536,
+    "links": {}
+  },
+  "mutationBatch": {
+    "id": "fixture-batch-1",
+    "request": {
+      "mutations": [
+        {
+          "mutationId": "fixture-mutation-1",
+          "deviceId": "fixture-device-1",
+          "collection": "notes",
+          "recordId": "fixture-note-1",
+          "baseRevision": null,
+          "operation": "put",
+          "payload": { "title": "Shared contract" }
+        }
+      ]
+    },
+    "response": {
+      "results": [
+        {
+          "mutationId": "fixture-mutation-1",
+          "status": "applied",
+          "change": {
+            "sequence": 1,
+            "collection": "notes",
+            "recordId": "fixture-note-1",
+            "revision": "00000000-0000-4000-8000-000000000001",
+            "deleted": false,
+            "createdAt": "2026-08-17T00:00:00.000Z",
+            "payload": { "title": "Shared contract" }
+          }
+        }
+      ]
+    }
+  }
+}

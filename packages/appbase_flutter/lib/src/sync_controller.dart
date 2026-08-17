@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:appbase_client/appbase_client.dart';
 import 'package:flutter/foundation.dart';
@@ -9,7 +10,8 @@ final class AppBaseSyncController extends ChangeNotifier {
     Stream<Object?>? retrySignals,
     this.baseRetryDelay = const Duration(seconds: 2),
     this.maxRetryDelay = const Duration(minutes: 1),
-  }) {
+    Duration Function(Duration delay)? retryJitter,
+  }) : _retryJitter = retryJitter ?? _equalJitter {
     _state = engine.state;
     _stateSubscription = engine.states.listen((value) {
       _state = value;
@@ -23,6 +25,7 @@ final class AppBaseSyncController extends ChangeNotifier {
   final AppBaseSyncEngine engine;
   final Duration baseRetryDelay;
   final Duration maxRetryDelay;
+  final Duration Function(Duration delay) _retryJitter;
   late AppBaseSyncState _state;
   late final StreamSubscription<AppBaseSyncState> _stateSubscription;
   StreamSubscription<Object?>? _retrySubscription;
@@ -45,9 +48,10 @@ final class AppBaseSyncController extends ChangeNotifier {
       _nextRetry = null;
     } on AppBaseException catch (error) {
       if (!error.isRetryable) return;
-      final delay = error.retryAfter ?? _nextRetry ?? baseRetryDelay;
+      final retryBase = _nextRetry ?? baseRetryDelay;
+      final delay = error.retryAfter ?? _retryJitter(retryBase);
       _nextRetry = Duration(
-        milliseconds: (delay.inMilliseconds * 2).clamp(
+        milliseconds: (retryBase.inMilliseconds * 2).clamp(
           baseRetryDelay.inMilliseconds,
           maxRetryDelay.inMilliseconds,
         ),
@@ -76,4 +80,11 @@ final class AppBaseSyncController extends ChangeNotifier {
     unawaited(engine.close());
     super.dispose();
   }
+}
+
+Duration _equalJitter(Duration delay) {
+  final ceiling = delay.inMilliseconds;
+  if (ceiling <= 1) return delay;
+  final floor = ceiling ~/ 2;
+  return Duration(milliseconds: floor + Random().nextInt(ceiling - floor + 1));
 }

@@ -21,7 +21,7 @@ The first supported protocol version is `2026-08-17`.
 
 | Dart packages | Server package | Protocol   | Support   |
 | ------------- | -------------- | ---------- | --------- |
-| 0.1.x         | 0.1.2+         | 2026-08-17 | Supported |
+| 0.1.x         | 0.1.3+         | 2026-08-17 | Supported |
 
 Before the first stable release, all packages are released together from this
 repository. After 1.0, a protocol version remains supported for at least the two

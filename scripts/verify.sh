@@ -4,6 +4,8 @@ set -euo pipefail
 pnpm install --frozen-lockfile
 dart pub get --enforce-lockfile
 pnpm protocol:check
+cmp protocol/fixtures/http-contract.json \
+  packages/appbase_client/test/fixtures/http-contract.json
 pnpm format:check
 pnpm typecheck
 pnpm test:coverage

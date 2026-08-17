@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "resolveJsonModule": true,
     "types": ["@cloudflare/workers-types", "vitest/globals"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]

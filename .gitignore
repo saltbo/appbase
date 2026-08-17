@@ -8,7 +8,5 @@ node_modules/
 .dev.vars
 *.log
 .DS_Store
-pubspec.lock
-
 # Examples are applications and keep their lock files when added.
 !examples/**/pubspec.lock

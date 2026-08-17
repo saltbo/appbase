@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 
 import 'package:appbase_client/appbase_client.dart';
@@ -6,24 +7,25 @@ import 'package:http/testing.dart';
 import 'package:test/test.dart';
 
 void main() {
+  final fixtureFile = File(
+    'packages/appbase_client/test/fixtures/http-contract.json',
+  );
+  final contract =
+      jsonDecode(
+            (fixtureFile.existsSync()
+                    ? fixtureFile
+                    : File('test/fixtures/http-contract.json'))
+                .readAsStringSync(),
+          )
+          as Map<String, Object?>;
+
   test('loads configuration and sends the version contract', () async {
+    final fixture = contract['configuration']! as Map<String, Object?>;
     final client = MockClient((request) async {
       expect(request.url.path, '/appbase/client-configuration');
       expect(request.headers['API-Version'], appBaseProtocolVersion);
       return http.Response(
-        jsonEncode({
-          'protocolVersions': [appBaseProtocolVersion],
-          'issuer': 'https://identity.example',
-          'clientId': 'desktop',
-          'audience': 'https://api.example',
-          'usesResourceIndicator': true,
-          'acceptsDynamicCollections': true,
-          'encryptsAllPayloads': true,
-          'maxMutationsPerBatch': 50,
-          'maxChangesPerPage': 200,
-          'maxPayloadBytes': 65536,
-          'links': <String, Object?>{},
-        }),
+        jsonEncode(fixture),
         200,
         headers: {'content-type': 'application/json'},
       );
@@ -35,8 +37,48 @@ void main() {
 
     final config = await api.configuration();
 
-    expect(config.clientId, 'desktop');
+    expect(config.clientId, 'client-id');
     expect(config.maxMutationsPerBatch, 50);
+  });
+
+  test('consumes the shared TypeScript and Dart mutation fixture', () async {
+    final fixture = contract['mutationBatch']! as Map<String, Object?>;
+    final requestFixture = fixture['request']! as Map<String, Object?>;
+    final responseFixture = fixture['response']! as Map<String, Object?>;
+    final api = AppBaseHttpApi(
+      baseUri: Uri.parse('https://api.example/appbase/'),
+      client: MockClient((request) async {
+        expect(
+          jsonDecode(request.body) as Map<String, Object?>,
+          requestFixture,
+        );
+        return http.Response(jsonEncode(responseFixture), 200);
+      }),
+    );
+    final mutation =
+        (requestFixture['mutations']! as List<Object?>).single
+            as Map<String, Object?>;
+
+    final results = await api.push(
+      accessToken: 'token',
+      batchId: fixture['id']! as String,
+      mutations: [
+        AppBasePendingMutation(
+          mutationId: mutation['mutationId']! as String,
+          deviceId: mutation['deviceId']! as String,
+          collection: mutation['collection']! as String,
+          recordId: mutation['recordId']! as String,
+          baseRevision: mutation['baseRevision'] as String?,
+          operation: AppBaseMutationOperation.values.byName(
+            mutation['operation']! as String,
+          ),
+          payload: mutation['payload']! as Map<String, Object?>,
+        ),
+      ],
+    );
+
+    expect(results.single.mutationId, 'fixture-mutation-1');
+    expect(results.single.change.payload, {'title': 'Shared contract'});
   });
 
   test('maps RFC problem details to a stable retryable exception', () async {

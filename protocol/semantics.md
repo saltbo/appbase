@@ -59,8 +59,10 @@ token is scoped to the authenticated principal even though its encoding is not
 secret. Clients must not parse, synthesize, compare, or persist a token for a
 different account.
 
-Unknown collections are forward-compatible. A client records their revision
-metadata and advances its checkpoint without attempting a product projection.
+Unknown collections fail the pull transaction without advancing its checkpoint.
+Products must deploy collection adapters before a server begins returning those
+collections. This makes an incomplete client rollout visible and prevents silent
+loss of product projections.
 
 ## Client synchronization cycle
 

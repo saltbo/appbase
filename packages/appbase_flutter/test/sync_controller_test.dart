@@ -23,6 +23,34 @@ void main() {
     expect(controller.state.account?.subject, 'user-1');
     controller.dispose();
   });
+
+  test('retryable failures use bounded injectable jitter', () async {
+    final account = AppBaseAccount(
+      issuer: Uri.parse('https://identity.example'),
+      subject: 'user-1',
+      deviceId: 'device-1',
+    );
+    final engine = AppBaseSyncEngine(
+      session: _Session(account),
+      api: _FailingApi(),
+      persistence: _Persistence(account),
+      batchIds: AppBaseRandomBatchIdGenerator(),
+    );
+    final jitterInputs = <Duration>[];
+    final controller = AppBaseSyncController(
+      engine: engine,
+      retryJitter: (delay) {
+        jitterInputs.add(delay);
+        return const Duration(days: 1);
+      },
+    );
+    addTearDown(controller.dispose);
+
+    await controller.syncNow();
+
+    expect(jitterInputs, [const Duration(seconds: 2)]);
+    expect(controller.state.phase, AppBaseSyncPhase.failed);
+  });
 }
 
 final class _Session implements AppBaseSession {
@@ -38,7 +66,7 @@ final class _Session implements AppBaseSession {
   Future<void> signOut() async => value = null;
 }
 
-final class _Api implements AppBaseApi {
+class _Api implements AppBaseApi {
   @override
   Future<AppBaseClientConfiguration> configuration() async =>
       AppBaseClientConfiguration(
@@ -65,6 +93,16 @@ final class _Api implements AppBaseApi {
     required String batchId,
     required List<AppBasePendingMutation> mutations,
   }) async => const [];
+}
+
+final class _FailingApi extends _Api {
+  @override
+  Future<AppBaseClientConfiguration> configuration() =>
+      throw const AppBaseApiException(
+        kind: AppBaseFailureKind.transport,
+        code: 'unavailable',
+        message: 'Temporarily unavailable.',
+      );
 }
 
 final class _Persistence implements AppBasePersistence {

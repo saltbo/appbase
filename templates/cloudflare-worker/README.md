@@ -10,5 +10,6 @@
 5. Run `pnpm types`, `pnpm check`,
    `wrangler d1 migrations apply APPBASE_DB --remote`, then `pnpm deploy`.
 
-Never remove an old master key while any user key is wrapped by it. See
-`../../docs/key-rotation.md` for the rotation and rewrap procedure.
+Never remove an old master key while any envelope or user key references it.
+See `../../docs/key-rotation.md` for the bounded re-encryption and retirement
+procedure.
