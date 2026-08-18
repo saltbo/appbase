@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4 - 2026-08-18
+
+- Add reusable multi-resource OIDC grants for applications that authorize an
+  AppBase service and sibling protected APIs in one Realmroot sign-in.
+
 ## 0.1.3 - 2026-08-17
 
 - Add executable, bounded D1 key rotation with usage inspection and guarded key
