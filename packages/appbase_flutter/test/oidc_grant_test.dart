@@ -45,6 +45,27 @@ void main() {
     expect(manager.settings.refreshBefore, isNull);
   });
 
+  test('preserves RFC 8707 resources in the final authorization URL', () {
+    final request = OidcAuthorizeRequest(
+      responseType: const ['code'],
+      clientId: configuration.clientId,
+      redirectUri: Uri.parse('com.example:/oauth/callback'),
+      scope: const ['openid', 'offline_access'],
+      extra: {
+        'resource': [primary.toString(), vocnet.toString()],
+      },
+    );
+
+    final authorizationUri = request.generateUri(
+      Uri.parse('https://id.example.com/api/auth/oauth2/authorize'),
+    );
+
+    expect(authorizationUri.queryParametersAll['resource'], [
+      primary.toString(),
+      vocnet.toString(),
+    ]);
+  });
+
   test('keeps automatic refresh for a legacy single-resource session', () {
     final manager = AppBaseOidcPolicy(
       namespace: 'test',
@@ -188,6 +209,7 @@ final class _FakeOidcManager extends OidcUserManager {
     Map<String, dynamic>? extraTokenParameters,
     Map<String, String>? extraTokenHeaders,
     OidcPlatformSpecificOptions? options,
+    List<String>? responseTypeOverride,
   }) async {
     loginCalls++;
     return _current = await _user(primary, 'refresh-1');

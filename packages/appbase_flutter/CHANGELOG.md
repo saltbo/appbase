@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- Upgrade to the first-party Darwin OIDC implementation so repeated RFC 8707
+  resource indicators survive native authorization requests.
+
 ## 0.1.2
 
 - Add one authorization-code grant shared by multiple RFC 8707 protected

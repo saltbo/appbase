@@ -107,7 +107,6 @@ final class AppBaseOidcPolicy {
         // A multi-resource grant rotates one refresh token across audiences.
         // AppBase serializes those exchanges and therefore owns refresh timing.
         refreshBefore: automaticRefresh ? defaultRefreshBefore : null,
-        strictJwtVerification: true,
       ),
     );
   }
