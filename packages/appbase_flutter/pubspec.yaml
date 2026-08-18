@@ -1,6 +1,6 @@
 name: appbase_flutter
 description: Flutter lifecycle, secure installation identity, and OIDC adapters for AppBase.
-version: 0.1.1
+version: 0.1.2
 resolution: workspace
 repository: https://github.com/saltbo/appbase
 issue_tracker: https://github.com/saltbo/appbase/issues
