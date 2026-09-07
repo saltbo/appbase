@@ -79,7 +79,8 @@ export class RevenueCatProvider implements BillingProvider {
             Accept: "application/json",
           },
           signal: AbortSignal.timeout(10000),
-          redirect: "error",
+          // Workers supports manual redirects; non-2xx responses are rejected below.
+          redirect: "manual",
         },
       );
     } catch (cause) {
