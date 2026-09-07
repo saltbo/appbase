@@ -286,11 +286,15 @@ describe("RevenueCat boundary", () => {
       expect(options?.headers).toMatchObject({
         Authorization: "Bearer secret",
       });
+      expect(options?.redirect).toBe("manual");
       return new Response(JSON.stringify(payload()));
     });
     await gateway.subscriber("a/b");
   });
   it("rejects unavailable and malformed provider responses", async () => {
+    await expect(provider({}, 302).subscriber("a")).rejects.toMatchObject({
+      code: "PROVIDER_UNAVAILABLE",
+    });
     await expect(provider({}, 503).subscriber("a")).rejects.toMatchObject({
       code: "PROVIDER_UNAVAILABLE",
     });
