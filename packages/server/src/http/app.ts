@@ -83,8 +83,9 @@ export type AppBaseHttpOptions<TBindings extends object> = {
     capability: AppBaseCapability,
   ) => boolean | Promise<boolean>;
   membership?: {
-    config: MembershipConfig;
+    config: MembershipConfig | ((bindings: TBindings) => MembershipConfig);
     repository: (bindings: TBindings) => MembershipRepository;
+    service?: (bindings: TBindings) => MembershipService;
   };
   legacyV1?: boolean;
   problemTypeBase?: string;
@@ -290,10 +291,14 @@ export function createAppBase<TBindings extends object>(
         context,
         "membership:read",
       );
-      const service = new MembershipService(
-        options.membership!.repository(context.env),
-        options.membership!.config,
-      );
+      const service =
+        options.membership!.service?.(context.env) ??
+        new MembershipService(
+          options.membership!.repository(context.env),
+          typeof options.membership!.config === "function"
+            ? options.membership!.config(context.env)
+            : options.membership!.config,
+        );
       return context.json(await service.snapshot(principal.sub), 200, {
         "Cache-Control": "private, no-store",
       });
@@ -376,10 +381,14 @@ function registerLegacyRoutes<TBindings extends object>(
         context,
         "membership:read",
       );
-      const service = new MembershipService(
-        options.membership!.repository(context.env),
-        options.membership!.config,
-      );
+      const service =
+        options.membership!.service?.(context.env) ??
+        new MembershipService(
+          options.membership!.repository(context.env),
+          typeof options.membership!.config === "function"
+            ? options.membership!.config(context.env)
+            : options.membership!.config,
+        );
       return context.json(
         { data: await service.snapshot(principal.sub) },
         200,

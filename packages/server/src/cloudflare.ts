@@ -20,3 +20,5 @@ export {
   AuthorizationError,
   type Principal,
 } from "./usecases/ports.js";
+
+export { D1BillingRepository } from "./adapters/d1_billing_repository.js";

@@ -6,6 +6,8 @@ dart pub get --enforce-lockfile
 pnpm protocol:check
 cmp protocol/fixtures/http-contract.json \
   packages/appbase_client/test/fixtures/http-contract.json
+cmp protocol/fixtures/billing-contract.json \
+  packages/appbase_billing/test/fixtures/billing-contract.json
 pnpm format:check
 pnpm typecheck
 pnpm test:coverage
@@ -15,8 +17,8 @@ pnpm --filter appbase-cloudflare-worker check
 dart format --output=none --set-exit-if-changed packages examples
 dart analyze --fatal-infos
 dart test packages/appbase_client/test packages/appbase_drift/test
-flutter test packages/appbase_flutter/test
+flutter test packages/appbase_flutter/test packages/appbase_billing/test packages/appbase_revenuecat/test
 
-for package in appbase_client appbase_drift appbase_flutter; do
+for package in appbase_client appbase_drift appbase_flutter appbase_billing appbase_revenuecat; do
   (cd "packages/$package" && dart pub publish --dry-run)
 done

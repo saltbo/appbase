@@ -10,29 +10,24 @@ export type MembershipConfig = {
   freePlan: MembershipPlan;
   plans: readonly MembershipPlan[];
   now?: () => Date;
+  loadCatalog?: () => Promise<Pick<MembershipConfig, "freePlan" | "plans">>;
 };
 
 export class MembershipService {
-  private readonly plans: ReadonlyMap<string, MembershipPlan>;
-
   constructor(
     private readonly repository: MembershipRepository,
     private readonly config: MembershipConfig,
-  ) {
-    this.plans = new Map([
-      [config.freePlan.id, config.freePlan],
-      ...config.plans.map((plan) => [plan.id, plan] as const),
-    ]);
-  }
+  ) {}
 
   async snapshot(ownerSub: string): Promise<MembershipSnapshot> {
+    const config = await this.currentConfig();
     const now = this.now();
     const grant = await this.repository.activeGrant(
       ownerSub,
       now.toISOString(),
     );
     const plan =
-      grant === null ? this.config.freePlan : this.requirePlan(grant.planId);
+      grant === null ? config.freePlan : this.requirePlan(grant.planId, config);
     const capabilities = Object.fromEntries(
       await Promise.all(
         Object.entries(plan.capabilities).map(async ([name, definition]) => {
@@ -111,13 +106,23 @@ export class MembershipService {
       ownerSub,
       now.toISOString(),
     );
+    const config = await this.currentConfig();
     return grant === null
-      ? this.config.freePlan
-      : this.requirePlan(grant.planId);
+      ? config.freePlan
+      : this.requirePlan(grant.planId, config);
   }
 
-  private requirePlan(planId: string): MembershipPlan {
-    const plan = this.plans.get(planId);
+  private currentConfig() {
+    return this.config.loadCatalog?.() ?? Promise.resolve(this.config);
+  }
+
+  private requirePlan(
+    planId: string,
+    config: Pick<MembershipConfig, "freePlan" | "plans">,
+  ): MembershipPlan {
+    const plan = [config.freePlan, ...config.plans].find(
+      (p) => p.id === planId,
+    );
     if (plan === undefined)
       throw new Error(`Unknown membership plan: ${planId}`);
     return plan;

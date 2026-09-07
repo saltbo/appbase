@@ -10,3 +10,6 @@ node_modules/
 .DS_Store
 # Examples are applications and keep their lock files when added.
 !examples/**/pubspec.lock
+
+# Generated plugin resolution contains machine-specific absolute paths.
+.flutter-plugins-dependencies

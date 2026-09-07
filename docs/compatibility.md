@@ -26,3 +26,17 @@ The first supported protocol version is `2026-08-17`.
 Before the first stable release, all packages are released together from this
 repository. After 1.0, a protocol version remains supported for at least the two
 most recent minor client release lines or twelve months, whichever is longer.
+
+## Optional billing (unreleased)
+
+Billing 0.1.0 adds `/billing/*` independently of sync protocol 2026-08-17.
+Existing sync and membership response contracts remain supported. The new
+Flutter packages are opt-in and require a host exposing the billing endpoints.
+Store prices and paywall configuration remain provider-owned. Administrators
+may change existing capability limits, not names or accounting periods.
+
+| Client | Server | Contract |
+| --- | --- | --- |
+| Existing 0.1.x sync | Billing-enabled server | Unchanged 2026-08-17 |
+| appbase_billing 0.1.0 | Billing-enabled server | billing.openapi.json |
+| appbase_revenuecat 0.1.0 | appbase_billing 0.1.0 | Mobile Paywall UI |
