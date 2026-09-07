@@ -71,7 +71,9 @@ export class RevenueCatProvider implements BillingProvider {
       );
     let response: Response;
     try {
-      response = await this.request(
+      // Call standalone: workerd rejects a native fetch bound to this adapter.
+      const request = this.request;
+      response = await request(
         `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`,
         {
           headers: {

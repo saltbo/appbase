@@ -281,7 +281,12 @@ describe("RevenueCat boundary", () => {
     expect((await provider(refund).subscriber("a")).entitlements).toEqual([]);
   });
   it("uses a server credential and encodes customer identity", async () => {
-    const gateway = new RevenueCatProvider("secret", async (url, options) => {
+    const gateway = new RevenueCatProvider("secret", async function (
+      this: unknown,
+      url,
+      options,
+    ) {
+      expect(this).toBeUndefined();
       expect(url).toBe("https://api.revenuecat.com/v1/subscribers/a%2Fb");
       expect(options?.headers).toMatchObject({
         Authorization: "Bearer secret",
