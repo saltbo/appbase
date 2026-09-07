@@ -1,0 +1,17 @@
+name: appbase_revenuecat
+description: Optional RevenueCat SDK and remotely configured Paywalls for AppBase.
+version: 0.1.0
+resolution: workspace
+repository: https://github.com/saltbo/appbase
+environment:
+  sdk: ^3.12.0
+  flutter: '>=3.41.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  appbase_billing: ^0.1.0
+  purchases_flutter: ^10.11.0
+  purchases_ui_flutter: ^10.11.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

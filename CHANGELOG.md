@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 - 2026-09-07
+
+- Add optional RevenueCat subscription reconciliation, account isolation, authenticated webhooks, and D1 billing persistence.
+- Add an operator-managed membership catalog with conditional updates for existing limits and entitlement mappings.
+- Add optional Flutter billing and RevenueCat Paywalls/Customer Center packages.
+- Preserve the existing synchronization protocol and optional membership integration.
+- Require billing migration 0003 only for products enabling billing; store configuration and native acceptance remain product-owned.
+
 ## 0.1.4 - 2026-08-18
 
 - Add reusable multi-resource OIDC grants for applications that authorize an

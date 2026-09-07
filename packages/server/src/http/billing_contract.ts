@@ -1,0 +1,451 @@
+export const billingOpenApi = {
+  openapi: "3.1.0",
+  info: {
+    title: "AppBase Optional Billing",
+    version: "0.1.0",
+    license: {
+      name: "Apache-2.0",
+      identifier: "Apache-2.0",
+    },
+  },
+  servers: [
+    {
+      url: "https://api.example",
+    },
+  ],
+  paths: {
+    "/billing/configuration": {
+      get: {
+        operationId: "getBillingConfiguration",
+        summary: "getBillingConfiguration",
+        security: [
+          {
+            oauth2: ["billing:configure"],
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Successful response",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/Catalog",
+                },
+              },
+            },
+            headers: {
+              ETag: {
+                schema: {
+                  type: "string",
+                },
+                description:
+                  'Quoted catalog revision; bootstrap revision is "0"',
+              },
+            },
+          },
+          "401": {
+            description: "Missing or invalid bearer token",
+          },
+          "403": {
+            description: "Insufficient authority",
+          },
+          "502": {
+            description: "Billing provider unavailable; no success is recorded",
+          },
+        },
+      },
+      put: {
+        operationId: "replaceBillingConfiguration",
+        summary: "replaceBillingConfiguration",
+        security: [
+          {
+            oauth2: ["billing:configure"],
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Successful response",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/Catalog",
+                },
+              },
+            },
+            headers: {
+              ETag: {
+                schema: {
+                  type: "string",
+                },
+                description:
+                  'Quoted catalog revision; bootstrap revision is "0"',
+              },
+            },
+          },
+          "401": {
+            description: "Missing or invalid bearer token",
+          },
+          "403": {
+            description: "Insufficient authority",
+          },
+          "502": {
+            description: "Billing provider unavailable; no success is recorded",
+          },
+          "412": {
+            description: "Revision changed",
+          },
+          "428": {
+            description: "If-Match missing",
+          },
+          "422": {
+            description: "Invalid or incompatible catalog",
+          },
+        },
+        parameters: [
+          {
+            in: "header",
+            name: "If-Match",
+            required: true,
+            schema: {
+              type: "string",
+            },
+            description: "Exact ETag read before editing",
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/Catalog",
+              },
+            },
+          },
+        },
+      },
+    },
+    "/billing/account": {
+      get: {
+        operationId: "getBillingAccount",
+        summary: "getBillingAccount",
+        security: [
+          {
+            oauth2: ["appbase:read"],
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Successful response",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    appUserId: {
+                      type: "string",
+                    },
+                    sdkKeys: {
+                      type: "object",
+                      properties: {
+                        ios: {
+                          type: "string",
+                        },
+                        android: {
+                          type: "string",
+                        },
+                      },
+                      required: ["ios", "android"],
+                      additionalProperties: false,
+                    },
+                    state: {
+                      anyOf: [
+                        {
+                          $ref: "#/components/schemas/State",
+                        },
+                        {
+                          type: "null",
+                        },
+                      ],
+                    },
+                  },
+                  required: ["appUserId", "sdkKeys", "state"],
+                  additionalProperties: false,
+                },
+              },
+            },
+          },
+          "401": {
+            description: "Missing or invalid bearer token",
+          },
+          "403": {
+            description: "Insufficient authority",
+          },
+          "502": {
+            description: "Billing provider unavailable; no success is recorded",
+          },
+        },
+      },
+    },
+    "/billing/synchronizations": {
+      post: {
+        operationId: "createBillingSynchronization",
+        summary: "createBillingSynchronization",
+        security: [
+          {
+            oauth2: ["appbase:write"],
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Successful response",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/State",
+                },
+              },
+            },
+          },
+          "401": {
+            description: "Missing or invalid bearer token",
+          },
+          "403": {
+            description: "Insufficient authority",
+          },
+          "502": {
+            description: "Billing provider unavailable; no success is recorded",
+          },
+          "409": {
+            description: "A newer synchronization started; refresh membership",
+          },
+        },
+      },
+    },
+    "/billing/webhooks/revenuecat": {
+      post: {
+        operationId: "receiveRevenueCatWebhook",
+        summary: "Reconcile a verified RevenueCat notification",
+        security: [
+          {
+            revenuecatWebhook: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  event: {
+                    type: "object",
+                    required: ["id", "type"],
+                    properties: {
+                      id: {
+                        type: "string",
+                      },
+                      type: {
+                        type: "string",
+                      },
+                      app_user_id: {
+                        type: "string",
+                      },
+                      original_app_user_id: {
+                        type: "string",
+                      },
+                      aliases: {
+                        type: "array",
+                        items: {
+                          type: "string",
+                        },
+                      },
+                      transferred_from: {
+                        type: "array",
+                        items: {
+                          type: "string",
+                        },
+                      },
+                      transferred_to: {
+                        type: "array",
+                        items: {
+                          type: "string",
+                        },
+                      },
+                    },
+                  },
+                },
+                required: ["event"],
+                additionalProperties: false,
+              },
+            },
+          },
+        },
+        responses: {
+          "204": {
+            description: "Processed; safe to repeat",
+          },
+          "401": {
+            description: "Invalid configured webhook authorization",
+          },
+          "422": {
+            description: "Invalid event",
+          },
+          "409": {
+            description:
+              "Concurrent synchronization superseded this attempt; redeliver",
+          },
+          "502": {
+            description: "Provider unavailable; redeliver",
+          },
+        },
+      },
+    },
+  },
+  components: {
+    securitySchemes: {
+      oauth2: {
+        type: "oauth2",
+        flows: {
+          authorizationCode: {
+            authorizationUrl: "https://identity.example/authorize",
+            tokenUrl: "https://identity.example/token",
+            scopes: {
+              "appbase:read": "Read own account",
+              "appbase:write": "Synchronize own subscription",
+              "billing:configure": "Manage membership catalog",
+            },
+          },
+        },
+      },
+      revenuecatWebhook: {
+        type: "apiKey",
+        in: "header",
+        name: "Authorization",
+        description:
+          "Exact configured RevenueCat webhook secret; separate from end-user OIDC.",
+      },
+    },
+    schemas: {
+      Capability: {
+        type: "object",
+        properties: {
+          limit: {
+            type: ["integer", "null"],
+            minimum: 0,
+          },
+          period: {
+            enum: ["lifetime", "utc_month"],
+          },
+        },
+        required: ["limit", "period"],
+        additionalProperties: false,
+      },
+      Plan: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+          },
+          capabilities: {
+            type: "object",
+            additionalProperties: {
+              $ref: "#/components/schemas/Capability",
+            },
+          },
+        },
+        required: ["id", "capabilities"],
+        additionalProperties: false,
+      },
+      Catalog: {
+        type: "object",
+        properties: {
+          freePlan: {
+            $ref: "#/components/schemas/Plan",
+          },
+          plans: {
+            type: "array",
+            minItems: 1,
+            items: {
+              $ref: "#/components/schemas/Plan",
+            },
+          },
+          entitlementPlans: {
+            type: "object",
+            additionalProperties: {
+              type: "string",
+            },
+          },
+          honorGracePeriod: {
+            type: "boolean",
+          },
+        },
+        required: ["freePlan", "plans", "entitlementPlans", "honorGracePeriod"],
+        additionalProperties: false,
+      },
+      State: {
+        type: "object",
+        properties: {
+          observedAt: {
+            type: "string",
+            format: "date-time",
+          },
+          managementUrl: {
+            type: ["string", "null"],
+            format: "uri",
+          },
+          entitlements: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/Entitlement",
+            },
+          },
+        },
+        required: ["observedAt", "managementUrl", "entitlements"],
+        additionalProperties: false,
+      },
+      Entitlement: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+          },
+          productId: {
+            type: "string",
+          },
+          store: {
+            type: "string",
+          },
+          sandbox: {
+            type: "boolean",
+          },
+          startsAt: {
+            type: "string",
+            format: "date-time",
+          },
+          expiresAt: {
+            type: "string",
+            format: "date-time",
+          },
+          graceEndsAt: {
+            type: ["string", "null"],
+            format: "date-time",
+          },
+          willRenew: {
+            type: "boolean",
+          },
+        },
+        required: [
+          "id",
+          "productId",
+          "store",
+          "sandbox",
+          "startsAt",
+          "expiresAt",
+          "graceEndsAt",
+          "willRenew",
+        ],
+        additionalProperties: false,
+      },
+    },
+  },
+} as const;

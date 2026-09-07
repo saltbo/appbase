@@ -7,6 +7,8 @@ environment:
 workspace:
   - packages/appbase_client
   - packages/appbase_drift
+  - packages/appbase_billing
+  - packages/appbase_revenuecat
   - packages/appbase_flutter
   - examples/flutter_example
 

@@ -30,6 +30,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: 5.20260712.1
         version: 5.20260712.1
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
       '@vitest/coverage-v8':
         specifier: 4.1.10
         version: 4.1.10(vitest@4.1.10)

@@ -1,0 +1,10 @@
+{
+  "account": {
+    "appUserId": "fixture-billing-account",
+    "sdkKeys": {
+      "ios": "public-ios",
+      "android": "public-android"
+    },
+    "state": null
+  }
+}

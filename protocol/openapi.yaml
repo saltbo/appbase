@@ -15,6 +15,14 @@ servers:
 security:
   - oauth2: [appbase:read, appbase:write]
 paths:
+  /billing/configuration:
+    $ref: "./billing.openapi.json#/paths/~1billing~1configuration"
+  /billing/account:
+    $ref: "./billing.openapi.json#/paths/~1billing~1account"
+  /billing/synchronizations:
+    $ref: "./billing.openapi.json#/paths/~1billing~1synchronizations"
+  /billing/webhooks/revenuecat:
+    $ref: "./billing.openapi.json#/paths/~1billing~1webhooks~1revenuecat"
   /appbase/client-configuration:
     get:
       summary: Get AppBase client configuration
@@ -142,6 +150,8 @@ paths:
           $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
+    revenuecatWebhook:
+      $ref: "./billing.openapi.json#/components/securitySchemes/revenuecatWebhook"
     oauth2:
       type: oauth2
       flows:
