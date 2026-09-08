@@ -7,6 +7,31 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  test('preserves sandbox prefix for account and synchronization', () async {
+    for (final suffix in ['/sandbox', '/sandbox/']) {
+      final paths = <String>[];
+      final api = HttpBillingApi(
+        baseUri: Uri.parse('https://billing.example$suffix'),
+        accessToken: () async => 'token',
+        client: MockClient((request) async {
+          paths.add(request.url.path);
+          expect(request.headers['Authorization'], 'Bearer token');
+          return http.Response(
+            '{"appUserId":"sandbox-id","sdkKeys":{"ios":"public","android":"public"}}',
+            200,
+          );
+        }),
+      );
+      await api.account();
+      await api.synchronize();
+      api.close();
+      expect(paths, [
+        '/sandbox/billing/account',
+        '/sandbox/billing/synchronizations',
+      ]);
+    }
+  });
+
   test('decodes the shared server account contract', () async {
     final workspaceFile = File(
       'packages/appbase_billing/test/fixtures/billing-contract.json',

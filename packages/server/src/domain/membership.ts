@@ -5,6 +5,7 @@ export type CapabilityDefinition = {
 
 export type MembershipPlan = {
   id: string;
+  displayName?: string | undefined;
   capabilities: Readonly<Record<string, CapabilityDefinition>>;
 };
 
@@ -21,6 +22,8 @@ export type CapabilitySnapshot = CapabilityDefinition & {
 
 export type MembershipSnapshot = {
   planId: string;
+  displayName: string;
+  isPaid: boolean;
   grantEndsAt: string | null;
   capabilities: Readonly<Record<string, CapabilitySnapshot>>;
 };

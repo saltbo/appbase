@@ -47,7 +47,13 @@ export class BillingService {
     catalog: BillingCatalog,
     revision: number,
   ): Promise<VersionedCatalog> {
-    validateCatalog(catalog, this.baseline);
+    const current = await this.catalog();
+    if (current.revision !== revision)
+      throw new BillingError(
+        "PRECONDITION_FAILED",
+        "The catalog changed; reload before editing.",
+      );
+    validateCatalog(catalog, current.catalog);
     if (!(await this.repository.replaceCatalog(catalog, revision)))
       throw new BillingError(
         "PRECONDITION_FAILED",

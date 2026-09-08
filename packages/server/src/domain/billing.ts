@@ -1,5 +1,7 @@
 import type { MembershipPlan, MembershipGrant } from "./membership.js";
 
+export type BillingEnvironment = "production" | "sandbox";
+
 export type BillingCatalog = {
   freePlan: MembershipPlan;
   plans: readonly MembershipPlan[];
@@ -81,8 +83,7 @@ export function validateCatalog(
   if (
     catalog.freePlan.id !== baseline.freePlan.id ||
     ids.length !== new Set(ids).size ||
-    original.some((p) => !ids.includes(p.id)) ||
-    ids.some((id) => !original.some((p) => p.id === id))
+    original.some((p) => !ids.includes(p.id))
   ) {
     throw new BillingError(
       "INVALID_CATALOG",
@@ -90,7 +91,18 @@ export function validateCatalog(
     );
   }
   for (const plan of all) {
-    const capabilities = original.find((p) => p.id === plan.id)!.capabilities;
+    const capabilities = (
+      original.find((p) => p.id === plan.id) ?? baseline.freePlan
+    ).capabilities;
+    if (
+      plan.displayName !== undefined &&
+      (!plan.displayName.trim() || plan.displayName.length > 100)
+    ) {
+      throw new BillingError(
+        "INVALID_CATALOG",
+        "Plan display names must contain 1 to 100 characters.",
+      );
+    }
     if (
       Object.keys(plan.capabilities).length !==
         Object.keys(capabilities).length ||
@@ -108,13 +120,16 @@ export function validateCatalog(
     }
   }
   if (
+    Object.keys(baseline.entitlementPlans).some(
+      (id) => !(id in catalog.entitlementPlans),
+    ) ||
     Object.values(catalog.entitlementPlans).some(
       (id) => !catalog.plans.some((p) => p.id === id),
     )
   ) {
     throw new BillingError(
       "INVALID_CATALOG",
-      "Entitlements must reference a paid plan.",
+      "Historical entitlements must be retained and reference a paid plan.",
     );
   }
 }

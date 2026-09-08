@@ -343,6 +343,7 @@ export const billingOpenApi = {
       Plan: {
         type: "object",
         properties: {
+          displayName: { type: "string", minLength: 1, maxLength: 100 },
           id: {
             type: "string",
           },

@@ -53,11 +53,19 @@ final class HttpBillingApi implements BillingApi {
   Future<Object?> _request(String method, String path) async {
     final token = await accessToken();
     if (token == null) throw StateError('Sign in before using billing.');
-    final request = http.Request(method, baseUri.resolve(path))
-      ..headers.addAll({
-        'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
-      });
+    final request =
+        http.Request(
+            method,
+            baseUri.replace(
+              path: '${baseUri.path.replaceFirst(RegExp(r'/+$'), '')}$path',
+              query: null,
+              fragment: null,
+            ),
+          )
+          ..headers.addAll({
+            'Authorization': 'Bearer $token',
+            'Accept': 'application/json',
+          });
     final response = await http.Response.fromStream(
       await _client.send(request),
     ).timeout(const Duration(seconds: 20));

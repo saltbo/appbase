@@ -15,9 +15,9 @@ compatible and do not depend on purchases SDKs.
   transfer. Duplicate notifications are safe and failed work is not acknowledged.
 - A provider snapshot commits with a per-account generation and provider timestamp
   check; membership grants are a projection of that single authoritative state. Expiry, refund and grace periods determine effective access.
-- Sandbox state is excluded from production deployments.
+- Sandbox transactions are excluded from production membership.
 - Administrators replace a validated catalog using an ETag precondition.
-  Existing capability names/periods and plan identities remain stable; numeric
+  Existing capability names/periods and stored plan identities remain stable; new tiers and numeric
   limits and entitlement mappings are configurable. A catalog update takes
   effect on the next authoritative membership read; it needs no app release.
 - Store prices remain store-owned; a remotely configured paywall cannot change
@@ -58,7 +58,7 @@ RevenueCat owns Paywalls, Offerings, targeting and product-to-entitlement mappin
 Apple/Google own prices, subscription periods and existing renewal agreements.
 AppBase owns existing plan capability limits, priority (plans array order),
 entitlement-to-plan mappings and grace-period policy. New app functionality,
-new plan identities and changes to usage accounting periods require code review.
+changes to usage accounting periods require code review.
 Catalog edits apply on the next authoritative read, not as a push notification.
 The membership page reads actual usage and limits. Paywall marketing copy must
 be updated in RevenueCat when the matching service benefits change.
@@ -125,3 +125,87 @@ Dependencies: http is isolated to the billing HTTP client; purchases_flutter and
 purchases_ui_flutter are confined to the optional provider package. @types/node
 is test tooling for Node SQLite integration of D1 adapter SQL; production runtime
 contracts remain Cloudflare types.
+
+## Remotely configured membership tiers
+
+Catalog administration can add paid plan identifiers using the existing free-plan capability schema. Existing plan identifiers and accounting periods must remain so stored grants and usage remain valid. Plans may carry an optional displayName; snapshots add displayName and isPaid. Missing names use the stable plan identifier for compatibility with existing catalogs. Clients should render the returned name and enforce capabilities, never classify paid access from a known plan identifier. Existing clients tolerate the additive response fields; clients that hardcode plan labels require one upgrade before remote tiers display correctly. Retire sale offerings rather than deleting historical plan definitions or entitlement mappings.
+
+## Payment environment pilot
+
+A host may mount ordinary payment paths as `production` and `/sandbox` payment
+paths as `sandbox` inside one deployment and database. Construct
+`D1BillingRepository(db, environment)` and `D1MembershipRepository(db, environment)`
+once at the host composition boundary. The default is production. The five
+billing/membership tables use an environment column; sync records, devices,
+cursors and encryption keys have no environment changes. Never rewrite the OIDC
+subject. Every operation that consumes membership or quota must use the same
+bound repositories as the membership page, including product HTTP handlers.
+`HttpBillingApi` preserves a base URL path with or without its trailing slash.
+
+Migration `0004_billing_environments.sql` copies existing rows into production,
+preserving payment UUIDs, snapshots, generations, events, grants, usage and
+catalog revisions. New sandbox rows start empty. `(environment, owner_sub)` owns
+a stable random payment UUID. The UUID remains globally unique deliberately:
+provider notifications must resolve to one context, even in a shared project.
+The other unique keys and all repository predicates include environment.
+
+### Provider identity, restore and notification boundary
+
+Initialize RevenueCat with the server-issued identified UUID before any purchase
+or restore. Do not pass the OIDC subject or alias the two environment UUIDs. A
+reinstall/login recovers the same UUID from D1; back up this mapping alongside
+billing data. Restoring a store receipt may transfer it according to the
+RevenueCat project's restore policy; it does not create an AppBase grant from a
+client claim. Named-to-named account switches use SDK login, not anonymous
+configuration. New sandbox identities do not import the retired test worker's
+customers or recreate deleted Test Store products.
+
+For this pilot construct `RevenueCatProvider(key, fetch, environment)`. V1
+aggregates entitlements and subscriptions by identifier and product; reusing a
+customer across environments can hide one purchase behind another. The adapter
+rejects a response containing any opposite-environment subscription, including
+mixed histories, before replacing the persisted snapshot. The previous verified
+snapshot keeps its original expiry; an error never extends it. This conservative
+rejection also requires repair for legacy mixed customers; it is not a receipt
+history reconstruction strategy. Keep the argument omitted only for existing
+single-context hosts until they adopt this migration.
+
+Mount `createBilling` outside user OIDC middleware. Its shared-secret webhook
+authentication is independent. Supply `webhookServices` with both bound services
+on both mounts: the requested URL and webhook `environment` string do not grant
+access. Resolve known payment IDs from app user/original ID/aliases/transfer
+source and destination in each repository, fetch authoritative provider state,
+and project only verified matching transactions. Unknown IDs never create an
+account. An event is acknowledged only after all contexts succeed; successful
+contexts deduplicate on retry, while a failed context remains retryable. Transfer
+sources are refreshed to revoke old access as well as recipients to restore it.
+
+Alias/transfer effects inside RevenueCat cannot be undone by a SQL environment
+column. Cross-environment aliasing is unsupported. Before live rollout, verify
+identified login, reinstall recovery, same-context restore, named-user transfer,
+and wrong-context restore with the project's actual policy. If a customer is
+already mixed or aliased, stop its test purchases, inspect provider transaction
+ownership, and prepare an explicit operator-approved provider repair. Do not
+regenerate production UUIDs, merge environment identities, clear snapshots or
+extend grants to hide the problem. No provider settings are changed by this PR.
+
+Provider references: [customer response](https://www.revenuecat.com/docs/api-v1/customers),
+[identified login and aliases](https://www.revenuecat.com/docs/customers/identifying-customers),
+[restore policy](https://www.revenuecat.com/docs/projects/restore-behavior).
+
+### Coordinated rollout (not executed)
+
+1. Review and merge the framework change; publish coordinated server and billing
+   client artifacts. Product review can pin the PR commit SHA, not a nonexistent tag.
+2. Back up D1 and payment mappings. Check legacy rows, identify mixed provider
+   customers, and rehearse the migration on a copy. Plan a maintenance window:
+   old binaries using unscoped conflict targets are incompatible with the new schema.
+3. Pause affected membership/billing writes, apply the migration once using the
+   migration runner, deploy the matching binary, and validate production before
+   enabling sandbox clients. Do not run old writers concurrently with migration.
+4. Configure and verify the authenticated webhook, then test both contexts,
+   revocation, transfer, quota enforcement and unchanged sync. No live execution
+   is part of local acceptance.
+5. If validation fails, keep writes paused. Prefer a compatible forward fix;
+   an old-binary rollback requires restoring the pre-migration database and a
+   deliberate reconciliation of any later writes, not an automatic down migration.
