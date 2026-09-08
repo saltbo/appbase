@@ -253,6 +253,7 @@ function grantForm() {
         reason: f.get("reason"),
         environment: f.get("environment"),
         expectedMembership: user.membership,
+        expectedRevision: user.expectedRevision,
         expectedCatalogRevision: Number(etag.slice(1, -1)),
       }),
     });

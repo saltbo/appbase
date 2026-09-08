@@ -62,6 +62,14 @@ const grantInput = z
     endsAt: z.iso.datetime().transform((v) => new Date(v).toISOString()),
     reason,
     expectedMembership: snapshot,
+    expectedRevision: z
+      .object({
+        user: z.number().int().nonnegative(),
+        catalog: z.number().int().nonnegative(),
+        validUntil: z.number().int().positive(),
+        catalogFingerprint: z.string().regex(/^[a-f0-9]{64}$/u),
+      })
+      .strict(),
     expectedCatalogRevision: z
       .number()
       .int()

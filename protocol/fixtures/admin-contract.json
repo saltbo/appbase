@@ -21,6 +21,12 @@
       },
       "displayName": "starter",
       "isPaid": false
+    },
+    "expectedRevision": {
+      "user": 0,
+      "catalog": 0,
+      "validUntil": 1883433600,
+      "catalogFingerprint": "72272a5140e80527e11e57812bee1b1c7f619fe33f7bae4f10395d8598dc8e99"
     }
   }
 }

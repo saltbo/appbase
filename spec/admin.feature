@@ -37,3 +37,17 @@ Feature: Optional product administration
     When an administrator saves a catalog using its current revision
     Then existing billing validation applies
     And a concurrent edit is rejected without overwriting it
+
+  # Acceptance: S_ADMIN_CONCURRENCY status=implemented layers=integration,http
+  Scenario: A reviewed membership can be changed by only one concurrent grant
+    Given two operators review the same user and catalog
+    When they submit grants concurrently
+    Then only one grant is created and the other receives a conflict
+    And catalog, identity, membership source, usage or time-boundary changes invalidate the preview
+
+  # Acceptance: S_ADMIN_SESSION_RETENTION status=implemented layers=integration
+  Scenario: Login activity bounds expired authentication state
+    Given expired and active login attempts and sessions
+    When login state is created or consumed
+    Then a bounded oldest-first batch of expired rows is removed
+    And active state remains usable

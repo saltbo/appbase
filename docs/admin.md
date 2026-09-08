@@ -52,9 +52,30 @@ An active manual grant **overrides** the entire underlying plan, even if it
 reduces paid benefits. It is not an additive allowance. The confirmation page
 shows the current membership and proposed limits and requires the operator to
 type the environment. The server checks the supplied membership snapshot and
-catalog revision again before creation. These are fresh-read checks, not a
-distributed lock against concurrent purchases or other operators; later valid
-changes still take effect normally.
+catalog revision and the `expectedRevision` returned by the user preview. The
+INSERT atomically checks the per-user version, catalog epoch, saved catalog
+revision and a database-clock deadline. Database triggers advance versions for
+manual/legacy grants, subscription/identity changes and usage. Catalog changes
+advance a separate environment epoch, including deletion/recreation. Sync owner
+creation/removal or reassignment invalidates directory previews, but ordinary
+payload updates do not. A competing write invalidates the preview even if it
+leaves the effective plan unchanged. Conflicts return 409 without audit rows.
+
+Preview reads bracket dependent queries with version reads to reject torn
+results; the final conditional INSERT is the concurrency boundary. Preview
+validity ends at the earliest future grant/subscription transition, UTC month
+boundary, or five minutes. The proposed expiry is also checked at the INSERT.
+Deadlines use Unix seconds, rounding down conservatively. A time boundary can
+therefore require refresh up to one second early. Successful INSERT triggers
+advance the user version in the same transaction, so two operators using the
+same preview cannot both commit. Later writes must obtain a new preview.
+
+These guarantees require the D1 composition and all of its sources to share this
+database. Custom repositories/directories must implement equivalent revision
+coverage and an atomic conditional create; a mutable external identity or
+membership source cannot be bolted on without a consistency contract. A canonical catalog fingerprint also invalidates previews across bootstrap
+configuration changes during a rollout, even without a stored catalog row.
+Do not delete revision tombstones while issued previews could still exist.
 
 Among active manual grants, latest created_at wins, then greatest id for a
 stable tie break. Starts are inclusive, ends exclusive. Expired/revoked grants
@@ -109,9 +130,22 @@ last at most five minutes and never outlive the token response/ID token expiry;
 there is no refresh token. Permission changes take effect on reauthentication
 or expiry within that window. Logout deletes the server session and cookie; it
 does not log the operator out of Realmroot or sibling applications. Expired
-session and login-attempt rows can be removed by the host's retention job with
-`DELETE FROM appbase_admin_sessions WHERE expires_at <= ?` and the same condition
-on `appbase_admin_login_attempts` (epoch milliseconds).
+session and login-attempt rows are automatically pruned on creation, lookup and
+consumption: each operation deletes at most 100 expired rows from each table,
+oldest first through `(expires_at,id_hash)` indexes. Active rows are untouched;
+expiry is inclusive. Continued activity drains old backlogs while each call's
+work stays bounded. Hosts can additionally call `D1AdminSessionStore.pruneExpired`
+from their retention schedule to drain idle deployments. This is not a rate
+limit on unexpired login attempts; the host's normal ingress policy still applies.
+
+The new revision tables keep one counter per environment/user and one per
+catalog. Triggers add one upsert per insert/delete, two per update to cover owner
+or environment reassignment. Sync insert/delete perform an indexed owner
+existence probe; only the first/last row changes its directory revision. No
+payload is decoded. Membership/user/catalog write contention is serialized by
+SQLite, with unrelated users and environments retaining independent versions.
+Apply the complete unreleased 0005 migration with its triggers before enabling
+this admin build; an earlier review copy of 0005 is not deployment-compatible.
 
 All admin operations require an explicit injected authorization policy.
 Every read requires `admin:read`; grants additionally require

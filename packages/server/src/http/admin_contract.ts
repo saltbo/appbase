@@ -782,6 +782,9 @@ export const adminOpenApi = {
             type: "integer",
             minimum: 0,
           },
+          expectedRevision: {
+            $ref: "#/components/schemas/AdminRevision",
+          },
         },
         required: [
           "id",
@@ -792,6 +795,7 @@ export const adminOpenApi = {
           "reason",
           "expectedMembership",
           "expectedCatalogRevision",
+          "expectedRevision",
         ],
         additionalProperties: false,
       },
@@ -881,6 +885,9 @@ export const adminOpenApi = {
             type: "string",
             enum: ["manual", "subscription", "legacy", "default"],
           },
+          expectedRevision: {
+            $ref: "#/components/schemas/AdminRevision",
+          },
         },
         required: [
           "ownerSub",
@@ -888,6 +895,7 @@ export const adminOpenApi = {
           "manualGrant",
           "subscription",
           "source",
+          "expectedRevision",
         ],
         additionalProperties: false,
       },
@@ -936,6 +944,31 @@ export const adminOpenApi = {
           "canConfigure",
         ],
         additionalProperties: false,
+      },
+      AdminRevision: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          user: {
+            type: "integer",
+            minimum: 0,
+          },
+          catalog: {
+            type: "integer",
+            minimum: 0,
+          },
+          validUntil: {
+            type: "integer",
+            minimum: 0,
+          },
+          catalogFingerprint: {
+            type: "string",
+            pattern: "^[a-f0-9]{64}$",
+          },
+        },
+        required: ["user", "catalog", "validUntil", "catalogFingerprint"],
+        description:
+          "Opaque optimistic version and Unix-second deadline. Obtain from the user preview and submit unchanged; expired or changed state conflicts.",
       },
     },
   },

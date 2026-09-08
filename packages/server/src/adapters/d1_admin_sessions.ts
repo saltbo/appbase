@@ -1,8 +1,26 @@
 import type { AdminSessionStore } from "../http/admin_oidc.js";
 import type { Principal } from "../usecases/ports.js";
 export class D1AdminSessionStore implements AdminSessionStore {
-  constructor(private readonly db: D1Database) {}
+  constructor(
+    private readonly db: D1Database,
+    private readonly now: () => number = () => Date.now(),
+  ) {}
+  /** At most 100 expired rows per table per operation; indexes keep work bounded. */
+  async pruneExpired(now = this.now()) {
+    for (const table of [
+      "appbase_admin_login_attempts",
+      "appbase_admin_sessions",
+    ] as const) {
+      await this.db
+        .prepare(
+          `DELETE FROM ${table} WHERE id_hash IN (SELECT id_hash FROM ${table} WHERE expires_at<=?1 ORDER BY expires_at,id_hash LIMIT 100)`,
+        )
+        .bind(now)
+        .run();
+    }
+  }
   async startAttempt(idHash: string, expiresAt: number) {
+    await this.pruneExpired();
     await this.db
       .prepare(
         "INSERT INTO appbase_admin_login_attempts(id_hash,expires_at) VALUES (?1,?2)",
@@ -11,6 +29,7 @@ export class D1AdminSessionStore implements AdminSessionStore {
       .run();
   }
   async consumeAttempt(idHash: string, now: number) {
+    await this.pruneExpired(now);
     const result = await this.db
       .prepare(
         "DELETE FROM appbase_admin_login_attempts WHERE id_hash=?1 AND expires_at>?2",
@@ -20,6 +39,7 @@ export class D1AdminSessionStore implements AdminSessionStore {
     return result.meta.changes === 1;
   }
   async put(idHash: string, principal: Principal, expiresAt: number) {
+    await this.pruneExpired();
     await this.db
       .prepare(
         "INSERT INTO appbase_admin_sessions(id_hash,principal_json,expires_at) VALUES (?1,?2,?3)",
@@ -28,6 +48,7 @@ export class D1AdminSessionStore implements AdminSessionStore {
       .run();
   }
   async get(idHash: string, now: number) {
+    await this.pruneExpired(now);
     const r = await this.db
       .prepare(
         "SELECT principal_json FROM appbase_admin_sessions WHERE id_hash=?1 AND expires_at>?2",

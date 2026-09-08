@@ -2,6 +2,7 @@ import type {
   AdminEnvironment,
   AdminGrantRepository,
   ManualGrant,
+  AdminRevision,
 } from "../usecases/admin.js";
 
 type Row = {
@@ -50,6 +51,47 @@ export class D1AdminRepository implements AdminGrantRepository {
     private readonly db: D1Database,
     readonly environment: AdminEnvironment,
   ) {}
+  async revision(ownerSub: string, now: string): Promise<AdminRevision> {
+    const row = await this.db
+      .prepare(
+        `SELECT
+      COALESCE((SELECT revision FROM appbase_admin_user_revisions WHERE environment=?1 AND owner_sub=?2),0) AS user_revision,
+      COALESCE((SELECT revision FROM appbase_admin_catalog_revisions WHERE environment=?1),0) AS catalog_revision,
+      (SELECT MIN(boundary) FROM (
+        SELECT starts_at AS boundary FROM appbase_admin_grants WHERE environment=?1 AND owner_sub=?2 AND revoked_at IS NULL
+        UNION ALL SELECT ends_at FROM appbase_admin_grants WHERE environment=?1 AND owner_sub=?2 AND revoked_at IS NULL
+        UNION ALL SELECT starts_at FROM appbase_membership_grants WHERE environment=?1 AND owner_sub=?2
+        UNION ALL SELECT ends_at FROM appbase_membership_grants WHERE environment=?1 AND owner_sub=?2
+        UNION ALL SELECT json_extract(e.value,'$.startsAt') FROM appbase_billing_accounts a,json_each(a.state_json,'$.entitlements') e WHERE a.environment=?1 AND a.owner_sub=?2
+        UNION ALL SELECT json_extract(e.value,'$.expiresAt') FROM appbase_billing_accounts a,json_each(a.state_json,'$.entitlements') e WHERE a.environment=?1 AND a.owner_sub=?2
+        UNION ALL SELECT json_extract(e.value,'$.graceEndsAt') FROM appbase_billing_accounts a,json_each(a.state_json,'$.entitlements') e WHERE a.environment=?1 AND a.owner_sub=?2
+      ) WHERE boundary>?3) AS next_boundary`,
+      )
+      .bind(this.environment, ownerSub, now)
+      .first<{
+        user_revision: number;
+        catalog_revision: number;
+        next_boundary: string | null;
+      }>();
+    if (!row) throw new Error("Admin revision query returned no row.");
+    const date = new Date(now);
+    const nextMonth = Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth() + 1,
+      1,
+    );
+    return {
+      user: row.user_revision,
+      catalog: row.catalog_revision,
+      validUntil: Math.floor(
+        Math.min(
+          date.getTime() + 300_000,
+          nextMonth,
+          row.next_boundary === null ? Infinity : Date.parse(row.next_boundary),
+        ) / 1000,
+      ),
+    };
+  }
   async activeGrant(ownerSub: string, now: string) {
     const row = await this.db
       .prepare(
@@ -78,12 +120,18 @@ export class D1AdminRepository implements AdminGrantRepository {
       .first<Row>();
     return row ? map(row) : null;
   }
-  async create(g: ManualGrant) {
+  async create(g: ManualGrant, expected: AdminRevision) {
     if (g.environment !== this.environment)
       throw new Error("Admin environment mismatch.");
     const r = await this.db
       .prepare(
-        `INSERT INTO appbase_admin_grants(environment,id,owner_sub,plan_id,starts_at,ends_at,reason,created_by,created_at,previous_plan_id,catalog_revision) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11) ON CONFLICT(environment,id) DO NOTHING`,
+        `INSERT INTO appbase_admin_grants(environment,id,owner_sub,plan_id,starts_at,ends_at,reason,created_by,created_at,previous_plan_id,catalog_revision)
+         SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11
+         WHERE COALESCE((SELECT revision FROM appbase_admin_user_revisions WHERE environment=?1 AND owner_sub=?3),0)=?12
+           AND COALESCE((SELECT revision FROM appbase_admin_catalog_revisions WHERE environment=?1),0)=?13
+           AND COALESCE((SELECT revision FROM appbase_billing_catalog WHERE environment=?1 AND id=1),0)=?11
+           AND unixepoch() < ?14
+         ON CONFLICT(environment,id) DO NOTHING`,
       )
       .bind(
         this.environment,
@@ -97,6 +145,9 @@ export class D1AdminRepository implements AdminGrantRepository {
         g.createdAt,
         g.previousPlanId,
         g.catalogRevision,
+        expected.user,
+        expected.catalog,
+        expected.validUntil,
       )
       .run();
     return r.meta.changes === 1;

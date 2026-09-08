@@ -60,3 +60,8 @@ Existing sync clients, cursors and membership representations are unchanged.
 
 Manual grants affect clients only when the host adopts the composed membership
 repository for reads and quota enforcement. See [administration](admin.md).
+
+The unreleased admin contract requires `expectedRevision` from the user preview
+on grant creation. Older review-build clients must reload with the matched UI.
+Migration 0005 now includes database revision triggers and retention indexes;
+no previously reviewed 0005 draft has been deployed by this task.

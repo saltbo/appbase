@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { D1MembershipRepository } from "../src/adapters/d1_membership_repository.js";
 import { setup, catalog, sqlite } from "./admin_support.js";
 import { createAdmin } from "../src/http/admin.js";
 import { AuthenticationError } from "../src/usecases/ports.js";
@@ -23,8 +24,150 @@ const input = async (
   reason: "Support case 42",
   expectedMembership: await s.membership.snapshot("user"),
   expectedCatalogRevision: (await s.billing.catalog()).revision,
+  expectedRevision: (await s.service.user("user")).expectedRevision,
 });
 describe("manual membership", () => {
+  it("invalidates a proposed bootstrap plan change even without a catalog database write", async () => {
+    const s = setup();
+    await s.billing.repository.identity("user");
+    const preview = await input(s);
+    const modified = {
+      ...catalog,
+      plans: catalog.plans.map((p) => ({
+        ...p,
+        displayName: "New deployment label",
+      })),
+    };
+    const next = createD1AdminServices(
+      s.db,
+      "production",
+      {
+        subscriber: async () => {
+          throw new Error("unused");
+        },
+      },
+      modified,
+      () => new Date("2026-09-07T00:00:00.000Z"),
+    );
+    await expect(next.admin.create(preview, "operator")).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(await s.grants.list("user")).toHaveLength(0);
+  });
+  // Covers: S_ADMIN_CONCURRENCY case=happy_path
+  it("atomically rejects one of two writers that both passed the same preview checks", async () => {
+    const s = setup();
+    const preview = await input(s);
+    let arrivals = 0;
+    let release!: () => void;
+    const barrier = new Promise<void>((r) => {
+      release = r;
+    });
+    const create = s.grants.create.bind(s.grants);
+    vi.spyOn(s.grants, "create").mockImplementation(async (g, expected) => {
+      if (++arrivals === 2) release();
+      await barrier;
+      return create(g, expected);
+    });
+    const results = await Promise.allSettled([
+      s.service.create({ ...preview, planId: "team" }, "operator-a"),
+      s.service.create(
+        { ...preview, id: second, planId: "starter" },
+        "operator-b",
+      ),
+    ]);
+    expect(arrivals).toBe(2);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.find((r) => r.status === "rejected")).toMatchObject({
+      reason: { status: 409 },
+    });
+    const history = await s.grants.list("user");
+    expect(history).toHaveLength(1);
+    expect((await s.membership.snapshot("user")).planId).toBe(
+      history[0]!.planId,
+    );
+  });
+  // Covers: S_ADMIN_CONCURRENCY case=error_path
+  it.each([
+    "catalog",
+    "billing",
+    "legacy",
+    "usage",
+    "directory",
+    "expiry",
+    "month",
+    "proposed-expiry",
+  ])(
+    "rejects a %s change between validation and the actual INSERT",
+    async (change) => {
+      const s = setup();
+      if (change === "expiry")
+        await new D1MembershipRepository(s.db).putGrant({
+          id: "legacy",
+          ownerSub: "user",
+          planId: "starter",
+          source: "test",
+          startsAt: "2026-09-01T00:00:00.000Z",
+          endsAt: "2026-09-07T00:00:01.000Z",
+          createdAt: "2026-09-01T00:00:00.000Z",
+        });
+      if (change === "month") s.setNow("2026-09-30T23:59:59.000Z");
+      const preview = {
+        ...(await input(s)),
+        endsAt:
+          change === "proposed-expiry"
+            ? "2026-09-07T00:00:01.000Z"
+            : "2026-11-10T00:00:00.000Z",
+      };
+      const create = s.grants.create.bind(s.grants);
+      vi.spyOn(s.grants, "create").mockImplementation(async (g, expected) => {
+        if (change === "catalog")
+          await s.billing.replaceCatalog(
+            { ...catalog, honorGracePeriod: false },
+            0,
+          );
+        if (change === "billing") await s.billing.repository.identity("user");
+        if (change === "legacy")
+          await new D1MembershipRepository(s.db).putGrant({
+            id: "same-plan-new-source",
+            ownerSub: "user",
+            planId: "starter",
+            source: "test",
+            startsAt: "2026-09-01T00:00:00.000Z",
+            endsAt: null,
+            createdAt: "2026-09-01T00:00:00.000Z",
+          });
+        if (change === "usage")
+          await s.membership.claimUnique("user", "ai", "item");
+        if (change === "directory")
+          s.sqlite.exec(
+            "INSERT INTO appbase_records(owner_sub,collection,record_id,device_id,mutation_id,revision,created_at) VALUES ('user','private','r','d','m','rev','now')",
+          );
+        if (change === "expiry" || change === "proposed-expiry")
+          s.setDatabaseTime("2026-09-07T00:00:01.000Z");
+        if (change === "month") s.setDatabaseTime("2026-10-01T00:00:00.000Z");
+        return create(g, expected);
+      });
+      await expect(s.service.create(preview, "operator")).rejects.toMatchObject(
+        { status: 409 },
+      );
+      expect(await s.grants.list("user")).toEqual([]);
+    },
+  );
+  it("keeps unrelated users and environments independent", async () => {
+    const s = setup(),
+      sandbox = setup("sandbox", s);
+    const preview = await input(s);
+    const create = s.grants.create.bind(s.grants);
+    vi.spyOn(s.grants, "create").mockImplementation(async (g, expected) => {
+      await sandbox.billing.repository.identity("user");
+      await s.billing.repository.identity("other");
+      return create(g, expected);
+    });
+    await expect(s.service.create(preview, "operator")).resolves.toMatchObject({
+      id,
+    });
+  });
   it("rejects a stale proposed catalog and reports the effective source", async () => {
     const s = setup();
     const preview = await input(s);
@@ -132,7 +275,12 @@ describe("manual membership", () => {
         reason: "test",
       }),
     ).toBe(false);
-    await expect(sandbox.grants.create(grant)).rejects.toThrow("environment");
+    await expect(
+      sandbox.grants.create(
+        grant,
+        await sandbox.grants.revision("user", grant.createdAt),
+      ),
+    ).rejects.toThrow("environment");
     await sandbox.repository.claimUniqueUsage({
       ownerSub: "user",
       capability: "ai",
@@ -190,6 +338,21 @@ function http(s = setup()) {
   return { ...s, request };
 }
 describe("admin HTTP and privacy", () => {
+  // Covers: S_ADMIN_CONCURRENCY case=contract
+  it("returns 409 for the losing concurrent HTTP grant", async () => {
+    const s = http();
+    const preview = { ...(await input(s)), environment: "production" };
+    const responses = await Promise.all([
+      s.request("/manual-grants", "POST", preview),
+      s.request("/manual-grants", "POST", {
+        ...preview,
+        id: second,
+        planId: "starter",
+      }),
+    ]);
+    expect(responses.map((r) => r.status).sort()).toEqual([201, 409]);
+    expect(await s.grants.list("user")).toHaveLength(1);
+  });
   it("publishes its optional contract and accepts the independent grant fixture", async () => {
     expect(adminOpenApi).toEqual(contract);
     const s = http();
@@ -332,6 +495,50 @@ describe("admin HTTP and privacy", () => {
   });
 });
 describe("admin storage boundaries", () => {
+  // Covers: S_ADMIN_SESSION_RETENTION case=contract
+  it("automatically drains bounded expired batches without deleting active authentication state", async () => {
+    const { db, sqlite: sql } = sqlite();
+    const store = new D1AdminSessionStore(db, () => 1000);
+    const principal = { sub: "operator", scopes: ["admin:read"] };
+    for (let i = 0; i < 250; i++) {
+      sql
+        .prepare("INSERT INTO appbase_admin_sessions VALUES (?,?,?)")
+        .run("session-" + i, JSON.stringify(principal), i);
+      sql
+        .prepare("INSERT INTO appbase_admin_login_attempts VALUES (?,?)")
+        .run("attempt-" + i, i);
+    }
+    sql
+      .prepare("INSERT INTO appbase_admin_sessions VALUES (?,?,?)")
+      .run("live", JSON.stringify(principal), 2000);
+    sql
+      .prepare("INSERT INTO appbase_admin_login_attempts VALUES (?,?)")
+      .run("live", 2000);
+    const count = (table: string) =>
+      sql
+        .prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE expires_at<=1000`)
+        .get()!.n;
+    await store.startAttempt("new", 2000);
+    expect(count("appbase_admin_sessions")).toBe(150);
+    expect(count("appbase_admin_login_attempts")).toBe(150);
+    expect(
+      sql
+        .prepare(
+          "SELECT id_hash FROM appbase_admin_login_attempts WHERE id_hash='attempt-0'",
+        )
+        .get(),
+    ).toBeUndefined();
+    expect(await store.get("live", 1000)).toEqual(principal);
+    expect(count("appbase_admin_sessions")).toBe(50);
+    expect(count("appbase_admin_login_attempts")).toBe(50);
+    expect(await store.consumeAttempt("live", 1000)).toBe(true);
+    expect(count("appbase_admin_sessions")).toBe(0);
+    expect(count("appbase_admin_login_attempts")).toBe(0);
+    expect(await store.consumeAttempt("new", 1000)).toBe(true);
+    expect(await store.get("live", 1000)).toEqual(principal);
+    await store.put("fresh", principal, 3000);
+    expect(await store.get("fresh", 1000)).toEqual(principal);
+  });
   // Covers: S_ADMIN_ENVIRONMENT case=happy_path
   it("composes real migrated environment repositories for reads, overrides and usage", async () => {
     const { db } = sqlite();
@@ -364,6 +571,7 @@ describe("admin storage boundaries", () => {
         reason: "Cross environment fixture",
         expectedMembership: before,
         expectedCatalogRevision: 0,
+        expectedRevision: (await p.admin.user("user")).expectedRevision,
       },
       "operator",
     );

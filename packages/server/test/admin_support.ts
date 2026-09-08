@@ -11,6 +11,8 @@ import { MembershipService } from "../src/usecases/membership.js";
 import type { BillingCatalog, BillingState } from "../src/domain/billing.js";
 export function sqlite() {
   const sqlite = new DatabaseSync(":memory:");
+  let databaseTime = Date.parse("2026-09-07T00:00:00.000Z");
+  sqlite.function("unixepoch", () => Math.floor(databaseTime / 1000));
   for (const name of [
     "0001_appbase.sql",
     "0003_billing.sql",
@@ -36,7 +38,13 @@ export function sqlite() {
         meta: { changes: Number(sqlite.prepare(sql).run(...args).changes) },
       }),
     }) as D1PreparedStatement;
-  return { sqlite, db: { prepare } as D1Database };
+  return {
+    sqlite,
+    db: { prepare } as D1Database,
+    setDatabaseTime: (value: string) => {
+      databaseTime = Date.parse(value);
+    },
+  };
 }
 export const catalog: BillingCatalog = {
   freePlan: {
@@ -107,6 +115,7 @@ export function setup(
     service,
     setNow: (value: string) => {
       now = new Date(value);
+      database.setDatabaseTime(value);
     },
   };
 }

@@ -785,6 +785,9 @@
           "expectedCatalogRevision": {
             "type": "integer",
             "minimum": 0
+          },
+          "expectedRevision": {
+            "$ref": "#/components/schemas/AdminRevision"
           }
         },
         "required": [
@@ -795,7 +798,8 @@
           "endsAt",
           "reason",
           "expectedMembership",
-          "expectedCatalogRevision"
+          "expectedCatalogRevision",
+          "expectedRevision"
         ],
         "additionalProperties": false
       },
@@ -884,6 +888,9 @@
           "source": {
             "type": "string",
             "enum": ["manual", "subscription", "legacy", "default"]
+          },
+          "expectedRevision": {
+            "$ref": "#/components/schemas/AdminRevision"
           }
         },
         "required": [
@@ -891,7 +898,8 @@
           "membership",
           "manualGrant",
           "subscription",
-          "source"
+          "source",
+          "expectedRevision"
         ],
         "additionalProperties": false
       },
@@ -940,6 +948,30 @@
           "canConfigure"
         ],
         "additionalProperties": false
+      },
+      "AdminRevision": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "user": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "catalog": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "validUntil": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "catalogFingerprint": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": ["user", "catalog", "validUntil", "catalogFingerprint"],
+        "description": "Opaque optimistic version and Unix-second deadline. Obtain from the user preview and submit unchanged; expired or changed state conflicts."
       }
     }
   }

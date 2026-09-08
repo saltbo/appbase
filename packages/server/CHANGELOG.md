@@ -24,3 +24,7 @@
 - Add optional confidential OIDC BFF with short-lived server sessions.
 - Bind admin grants and composition to the billing environment; preserve sync
   privacy and payment records. Requires 0005 after 0004.
+
+- Enforce admin grant previews with atomic D1 revision/time preconditions;
+  concurrent grants and stale catalog/source/usage/identity previews conflict.
+- Prune bounded expired session/login-attempt batches automatically.
