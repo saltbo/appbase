@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { readFileSync } from "node:fs";
+import { database } from "./support/billing_database.js";
 import {
   BillingService,
   type BillingProvider,
@@ -55,31 +54,6 @@ const state: BillingState = {
   ],
 };
 
-// Real SQLite executes the D1 adapter's SQL; the product also exercises it in workerd.
-function database(): D1Database {
-  const db = new DatabaseSync(":memory:");
-  db.exec(
-    readFileSync(
-      new URL("../migrations/0003_billing.sql", import.meta.url),
-      "utf8",
-    ),
-  );
-  db.exec(`CREATE TABLE appbase_membership_grants(id TEXT PRIMARY KEY, owner_sub TEXT, plan_id TEXT, source TEXT, starts_at TEXT, ends_at TEXT, created_at TEXT);
-    CREATE TABLE appbase_membership_usage(owner_sub TEXT, capability TEXT, period_key TEXT, item_key TEXT, created_at TEXT, UNIQUE(owner_sub,capability,period_key,item_key));`);
-  const prepare = (
-    sql: string,
-    args: SQLInputValue[] = [],
-  ): D1PreparedStatement =>
-    ({
-      bind: (...values: SQLInputValue[]) => prepare(sql, values),
-      first: async () => db.prepare(sql).get(...args) ?? null,
-      run: async () => ({
-        success: true,
-        meta: { changes: Number(db.prepare(sql).run(...args).changes) },
-      }),
-    }) as D1PreparedStatement;
-  return { prepare } as D1Database;
-}
 function setup(provider: BillingProvider = { subscriber: async () => state }) {
   const db = database();
   const repository = new D1BillingRepository(db);
@@ -88,6 +62,101 @@ function setup(provider: BillingProvider = { subscriber: async () => state }) {
 }
 
 describe("billing catalog and grants", () => {
+  it("emits the additive shared membership contract for a remotely named plan", async () => {
+    const { db } = setup();
+    const repository = new D1MembershipRepository(db);
+    await repository.putGrant({
+      id: "fixture",
+      ownerSub: "fixture",
+      planId: "studio",
+      source: "admin",
+      startsAt: now,
+      endsAt: null,
+      createdAt: now,
+    });
+    for (const itemKey of ["one", "two"])
+      await repository.claimUniqueUsage({
+        ownerSub: "fixture",
+        capability: "ai",
+        periodKey: "2026-09",
+        itemKey,
+        limit: 75,
+        createdAt: now,
+      });
+    const membership = new MembershipService(repository, {
+      ...catalog,
+      plans: [
+        {
+          id: "studio",
+          displayName: "Studio Max",
+          capabilities: { ai: { limit: 75, period: "utc_month" } },
+        },
+      ],
+      now: () => new Date(now),
+    });
+    expect(await membership.snapshot("fixture")).toEqual(fixture.membership);
+  });
+  it("adds a remote tier and name while retaining capability accounting", async () => {
+    const { repository, service, db } = setup();
+    const loadCatalog = async () => (await service.catalog()).catalog;
+    const membership = new MembershipService(
+      new BillingMembershipRepository(
+        new D1MembershipRepository(db),
+        repository,
+        loadCatalog,
+        false,
+      ),
+      { ...catalog, loadCatalog, now: () => new Date(now) },
+    );
+    await service.synchronize("a");
+    const updated: BillingCatalog = {
+      ...catalog,
+      plans: [
+        ...catalog.plans,
+        {
+          id: "studio",
+          displayName: "Studio",
+          capabilities: { ai: { limit: 75, period: "utc_month" } },
+        },
+      ],
+      entitlementPlans: { premium: "studio" },
+    };
+    await service.replaceCatalog(updated, 0);
+    expect(await membership.snapshot("a")).toMatchObject({
+      planId: "studio",
+      displayName: "Studio",
+      isPaid: true,
+    });
+    expect(await membership.limit("a", "ai")).toBe(75);
+    await service.replaceCatalog(
+      {
+        ...updated,
+        plans: updated.plans.map((p) =>
+          p.id === "studio" ? { ...p, displayName: "Studio Max" } : p,
+        ),
+      },
+      1,
+    );
+    expect((await membership.snapshot("a")).displayName).toBe("Studio Max");
+    await expect(service.replaceCatalog(catalog, 2)).rejects.toMatchObject({
+      code: "INVALID_CATALOG",
+    });
+    for (const capabilities of [
+      { unknown: { limit: 1, period: "utc_month" as const } },
+      { ai: { limit: 1, period: "lifetime" as const } },
+    ]) {
+      await expect(
+        service.replaceCatalog(
+          {
+            ...updated,
+            plans: [...updated.plans, { id: "invalid", capabilities }],
+          },
+          2,
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_CATALOG" });
+    }
+  });
+
   it("changes limits remotely while preserving accounting identities", async () => {
     const { repository, service, db } = setup();
     const loadCatalog = async () => (await service.catalog()).catalog;
@@ -121,8 +190,10 @@ describe("billing catalog and grants", () => {
     await service.replaceCatalog(catalog, 1);
     expect(await membership.limit("a", "ai")).toBe(10);
     const unmapped = { ...catalog, entitlementPlans: {} };
-    await service.replaceCatalog(unmapped, 2);
-    expect(await membership.limit("a", "ai")).toBe(2);
+    await expect(service.replaceCatalog(unmapped, 2)).rejects.toMatchObject({
+      code: "INVALID_CATALOG",
+    });
+    expect(await membership.limit("a", "ai")).toBe(10);
     expect(await membership.limit("b", "ai")).toBe(2);
   });
   it.each([
@@ -415,6 +486,21 @@ describe("billing HTTP", () => {
     expect((await put('"0"')).status).toBe(200);
     expect((await put('"0"')).status).toBe(412);
     expect((await put('"1"', { ...catalog, plans: [] })).status).toBe(422);
+    const added = {
+      ...catalog,
+      plans: [
+        ...catalog.plans,
+        { ...catalog.plans[0]!, id: "studio", displayName: "Studio" },
+      ],
+    };
+    expect((await put('"1"', added)).status).toBe(200);
+    const readback = await api.request("/configuration", {
+      headers: { Authorization: "admin" },
+    });
+    expect((await readback.json<BillingCatalog>()).plans[1]).toMatchObject({
+      id: "studio",
+      displayName: "Studio",
+    });
   });
   it("authenticates webhook deliveries separately and acknowledges only success", async () => {
     const api = app();

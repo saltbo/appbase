@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { BillingError, type BillingState } from "../domain/billing.js";
+import {
+  BillingError,
+  type BillingEnvironment,
+  type BillingState,
+} from "../domain/billing.js";
 import type { BillingProvider } from "../usecases/billing.js";
 
 const date = z
@@ -62,6 +66,7 @@ export class RevenueCatProvider implements BillingProvider {
   constructor(
     private readonly apiKey: string,
     private readonly request: typeof fetch = fetch,
+    private readonly environment?: BillingEnvironment,
   ) {}
   async subscriber(appUserId: string): Promise<BillingState> {
     if (!this.apiKey)
@@ -103,6 +108,19 @@ export class RevenueCatProvider implements BillingProvider {
       const data = responseSchema.parse(
         JSON.parse(await boundedText(response)),
       );
+      // V1 aggregates by product and entitlement. Never replace a valid snapshot
+      // with an opposite-environment or merged customer that can hide its purchase.
+      if (
+        this.environment !== undefined &&
+        Object.values(data.subscriber.subscriptions).some(
+          (sub) => sub.is_sandbox !== (this.environment === "sandbox"),
+        )
+      ) {
+        throw new BillingError(
+          "INVALID_PROVIDER_RESPONSE",
+          "The provider customer contains purchases from another billing environment.",
+        );
+      }
       const entitlements = Object.entries(data.subscriber.entitlements).flatMap(
         ([id, e]) => {
           const sub = data.subscriber.subscriptions[e.product_identifier];

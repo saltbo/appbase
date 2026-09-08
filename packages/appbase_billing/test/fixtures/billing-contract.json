@@ -6,5 +6,19 @@
       "android": "public-android"
     },
     "state": null
+  },
+  "membership": {
+    "planId": "studio",
+    "displayName": "Studio Max",
+    "isPaid": true,
+    "grantEndsAt": null,
+    "capabilities": {
+      "ai": {
+        "limit": 75,
+        "period": "utc_month",
+        "used": 2,
+        "periodKey": "2026-09"
+      }
+    }
   }
 }

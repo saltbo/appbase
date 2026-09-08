@@ -43,6 +43,8 @@ export class MembershipService {
     );
     return {
       planId: plan.id,
+      displayName: plan.displayName ?? plan.id,
+      isPaid: plan.id !== config.freePlan.id,
       grantEndsAt: grant?.endsAt ?? null,
       capabilities,
     };

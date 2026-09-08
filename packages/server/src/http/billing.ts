@@ -21,6 +21,7 @@ const id = z
 const plan = z
   .object({
     id,
+    displayName: z.string().trim().min(1).max(100).optional(),
     capabilities: z.record(
       id,
       z
@@ -58,6 +59,8 @@ export type BillingHttpOptions<B extends object> = {
   ) => boolean | Promise<boolean>;
   sdkKeys: (bindings: B) => { ios: string; android: string };
   webhookAuthorization: (bindings: B) => string;
+  /** Authenticated notification dispatcher; ownership, not the URL, chooses repositories. */
+  webhookServices?: (bindings: B) => readonly BillingService[];
 };
 
 /** Mount at /billing, outside user OIDC middleware; each route authenticates its own caller. */
@@ -187,7 +190,11 @@ export function createBilling<B extends object>(
         },
         422,
       );
-    await options.service(c.env).webhook({ id: event.id, userIds });
+    for (const service of options.webhookServices?.(c.env) ?? [
+      options.service(c.env),
+    ]) {
+      await service.webhook({ id: event.id, userIds });
+    }
     return c.body(null, 204);
   });
   return app;
