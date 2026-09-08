@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0 - 2026-09-08
+
+- Add schema-only billing configuration with admin setup, explicit unconfigured state, and default-only catalogs.
+- Remove execution-location classification; return recorded benefits and usage uniformly.
+- Delete unbound non-default plans only when historical grant references allow it, with checks at the database write boundary.
+- Preserve legacy catalog constructors for existing hosts; new hosts use BillingSchema and persist their own plans.
+
 ## 0.7.1 - 2026-09-08
 
 - Maintain plan limits, entitlement bindings and priority together; move grace period policy to Payment settings.

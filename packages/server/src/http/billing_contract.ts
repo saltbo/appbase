@@ -369,7 +369,6 @@ export const billingOpenApi = {
           },
           plans: {
             type: "array",
-            minItems: 1,
             items: {
               $ref: "#/components/schemas/Plan",
             },

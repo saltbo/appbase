@@ -1,4 +1,8 @@
-import type { BillingCatalog, BillingEnvironment } from "../domain/billing.js";
+import type {
+  BillingCatalog,
+  BillingSchema,
+  BillingEnvironment,
+} from "../domain/billing.js";
 import { BillingService, type BillingProvider } from "../usecases/billing.js";
 import { BillingMembershipRepository } from "../usecases/billing_membership_repository.js";
 import { MembershipService } from "../usecases/membership.js";
@@ -14,7 +18,7 @@ export function createD1AdminServices(
   db: D1Database,
   environment: BillingEnvironment,
   provider: BillingProvider,
-  baseline: BillingCatalog,
+  baseline: BillingCatalog | BillingSchema,
   now: () => Date = () => new Date(),
   benefits: AdminBenefitRegistry = {},
   paymentProvider?: AdminPaymentProvider,
@@ -35,7 +39,6 @@ export function createD1AdminServices(
   );
   const repository = underlying;
   const membership = new MembershipService(repository, {
-    ...baseline,
     loadCatalog,
     now,
   });
@@ -50,7 +53,7 @@ export function createD1AdminServices(
       billing,
       underlying,
       now,
-      benefits,
+      Object.keys(benefits).length ? benefits : billing.schema.capabilities,
       paymentProvider,
       new D1AdminPaymentEvents(db, environment),
     ),

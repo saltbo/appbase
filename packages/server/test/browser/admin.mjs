@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import {
   createAdmin,
   createAdminPage,
+  createD1AdminServices,
   D1AdminUserDirectory,
   AdminService,
 } from "../../dist/admin.js";
@@ -62,7 +63,7 @@ for (const environment of ["production", "sandbox"]) {
   const billing = new BillingService(new D1BillingRepository(db, environment), {subscriber: async () => { throw new Error("No network allowed"); }}, catalog);
   const underlying = new BillingMembershipRepository(new D1MembershipRepository(db, environment), billing.repository, async () => (await billing.catalog()).catalog, environment === "sandbox");
   const membership = new MembershipService(underlying, {...catalog, loadCatalog: async () => (await billing.catalog()).catalog});
-  services[environment] = new AdminService(environment, new D1AdminUserDirectory(db,environment),membership,billing,underlying,()=>new Date(),{ai:{displayName:"AI requests",description:"Cloud AI calls",enforcement:"cloud",unit:"requests"},sources:{displayName:"Sources",description:"Device sources",enforcement:"client",unit:"sources"},metadata:{displayName:"Metadata",description:"Unmetered cloud access",enforcement:"cloud",unit:"requests"}},revenueCatAdministration({apiKeyConfigured:true,webhookAuthorizationConfigured:false,iosSdkConfigured:true,androidSdkConfigured:false}),new D1AdminPaymentEvents(db,environment));
+  services[environment] = new AdminService(environment, new D1AdminUserDirectory(db,environment),membership,billing,underlying,()=>new Date(),{ai:{displayName:"AI requests",description:"Cloud AI calls",unit:"requests"},sources:{displayName:"Sources",description:"Device sources",unit:"sources"},metadata:{displayName:"Metadata",description:"Unmetered cloud access",unit:"requests"}},revenueCatAdministration({apiKeyConfigured:true,webhookAuthorizationConfigured:false,iosSdkConfigured:true,androidSdkConfigured:false}),new D1AdminPaymentEvents(db,environment));
 }
 let allowed = true, configureAllowed = true;
 const environments = [{name:"production",url:"https://admin.example.test/admin/api"},{name:"sandbox",url:"https://admin.example.test/sandbox/admin/api"}];
@@ -127,9 +128,9 @@ try {
   await page.getByRole("heading", {name:"Customer details"}).waitFor();
   assert.equal(await page.getByRole("button",{name:"Grant membership"}).count(),0);
   // Covers: S_ADMIN_BENEFIT_BOUNDARIES case=happy_path
-  await page.getByRole("heading",{name:"Cloud quotas",exact:true}).waitFor();
-  await page.getByRole("heading",{name:"Local unlock policy",exact:true}).waitFor();
-  await page.getByRole("cell",{name:"On device",exact:true}).waitFor();
+  await page.getByRole("heading",{name:"Benefits",exact:true}).waitFor();
+  await page.getByRole("heading",{name:"Benefits",exact:true}).waitFor();
+  assert.equal(await page.getByRole("cell",{name:"On device",exact:true}).count(),0);
   await page.getByRole("cell",{name:"Not metered",exact:true}).waitFor();
   await page.screenshot({path:"/tmp/appbase-admin-benefits.png",fullPage:true});
   // Covers: S_ADMIN_PAYMENT_WORKSPACE case=happy_path
@@ -260,6 +261,34 @@ try {
   allowed=false;
   await page.reload();
   await page.getByRole("status").filter({hasText:"do not have access"}).waitFor();
+  // Covers: S_ADMIN_CATALOG_SETUP case=happy_path
+  // Covers: S_ADMIN_CATALOG_SETUP case=error_path
+  // Covers: S_ADMIN_PLAN_DELETE case=happy_path
+  allowed=true;configureAllowed=true;
+  sql.prepare("DELETE FROM appbase_billing_catalog WHERE environment='sandbox'").run();
+  const schema={capabilities:{exports:{type:"quota",displayName:"Exports",description:"Export allowance",unit:"exports",period:"utc_month"}}};
+  services.sandbox=createD1AdminServices(db,"sandbox",{subscriber:async()=>{throw new Error("No provider call");}},schema).admin;
+  await page.reload();
+  await page.getByRole("combobox",{name:"Environment",exact:true}).selectOption("sandbox");
+  await page.getByRole("heading",{name:"Set up plans",exact:true}).waitFor();
+  await page.getByLabel("Default plan ID",{exact:true}).fill("basic");
+  await page.getByLabel("Display name",{exact:true}).fill("Basic");
+  await page.getByLabel("new / exports limit (utc_month)",{exact:true}).fill("4");
+  await page.getByLabel("Type sandbox to confirm",{exact:true}).fill("sandbox");
+  await page.getByRole("button",{name:"Create default plan",exact:true}).click();
+  await page.getByRole("row").filter({hasText:"Basic"}).waitFor();
+  assert.equal((await services.sandbox.billing.catalog()).catalog.freePlan.capabilities.exports.limit,4);
+  assert.equal(await page.getByRole("heading",{name:"Cloud quotas",exact:true}).count(),0);
+  const initialized=await services.sandbox.billing.catalog();
+  // A fixture-only unused plan exercises deletion without changing a real catalog.
+  await services.sandbox.billing.replaceCatalog({...initialized.catalog,plans:[{id:"unused",displayName:"Unused",capabilities:initialized.catalog.freePlan.capabilities}]},initialized.revision);
+  await page.getByRole("button",{name:"Plans & quotas",exact:true}).click();
+  await page.getByRole("button",{name:"Edit Unused",exact:true}).click();
+  await page.getByLabel("Type sandbox to confirm deletion",{exact:true}).fill("sandbox");
+  await page.getByRole("button",{name:"Delete plan",exact:true}).click();
+  await page.getByRole("heading",{name:"Plans",exact:true}).waitFor();
+  assert.equal((await services.sandbox.billing.catalog()).catalog.plans.length,0);
+  await page.screenshot({path:"/tmp/appbase-schema-plans.png",fullPage:true});
   assert.deepEqual(errors, []);
   console.log(
     "Admin browser acceptance passed: pagination, search, details, fixed URL environment switch, stale reads/writes, proxy ETag, narrow layout and CSP.",

@@ -149,6 +149,9 @@ export function createAdmin<B extends object>(options: AdminHttpOptions<B>) {
       productName: options.productName,
       operator: p.sub,
       benefits: service(c.env).benefits,
+      benefitSchema: service(c.env).billing.schema.capabilities,
+      catalogInitialized:
+        (await service(c.env).billing.administrationCatalog()) !== null,
       paymentProvider: service(c.env).paymentProvider?.configuration ?? null,
       canInspectEvents: !!service(c.env).paymentEvents,
       environments: options.environments,
@@ -207,7 +210,12 @@ export function createAdmin<B extends object>(options: AdminHttpOptions<B>) {
   });
   app.get("/catalog", async (c) => {
     await authorize(c.req.raw, c.env, "admin:read");
-    const result = await service(c.env).billing.catalog();
+    const result = await service(c.env).billing.administrationCatalog();
+    if (!result) {
+      c.header("ETag", '"0"');
+      c.header("AppBase-Catalog-Revision", "0");
+      return c.json(null);
+    }
     c.header("ETag", `"${result.revision}"`);
     c.header("AppBase-Catalog-Revision", String(result.revision));
     return c.json(result.catalog);

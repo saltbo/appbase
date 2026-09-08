@@ -2,6 +2,7 @@ import {
   BillingError,
   validateCatalog,
   type BillingCatalog,
+  type BillingSchema,
   type BillingState,
   type VersionedCatalog,
 } from "../domain/billing.js";
@@ -29,31 +30,67 @@ export interface BillingProvider {
 }
 
 export class BillingService {
+  readonly schema: BillingSchema;
+  private readonly legacyCatalog: BillingCatalog | undefined;
   constructor(
     readonly repository: BillingRepository,
     private readonly provider: BillingProvider,
-    readonly baseline: BillingCatalog,
-  ) {}
-  async catalog(): Promise<VersionedCatalog> {
-    // Revision zero is the declared bootstrap configuration, not an error fallback.
+    definition: BillingSchema | BillingCatalog,
+  ) {
+    // Existing hosts retain the pre-schema constructor until their explicit migration.
+    this.legacyCatalog = "freePlan" in definition ? definition : undefined;
+    this.schema =
+      "capabilities" in definition
+        ? definition
+        : {
+            capabilities: Object.fromEntries(
+              Object.entries(definition.freePlan.capabilities).map(
+                ([id, value]) => [
+                  id,
+                  {
+                    type: "quota" as const,
+                    displayName: id,
+                    description: id,
+                    unit: "units",
+                    period: value.period,
+                  },
+                ],
+              ),
+            ),
+          };
+  }
+  async administrationCatalog(): Promise<VersionedCatalog | null> {
+    const stored = await this.repository.catalog();
     return (
-      (await this.repository.catalog()) ?? {
-        revision: 0,
-        catalog: this.baseline,
-      }
+      stored ??
+      (this.legacyCatalog ? { revision: 0, catalog: this.legacyCatalog } : null)
     );
   }
+  async catalog(): Promise<VersionedCatalog> {
+    const result = await this.administrationCatalog();
+    if (!result)
+      throw new BillingError(
+        "CONFIGURATION_MISSING",
+        "Create the default plan in administration before using membership.",
+      );
+    return result;
+  }
+
   async replaceCatalog(
     catalog: BillingCatalog,
     revision: number,
   ): Promise<VersionedCatalog> {
-    const current = await this.catalog();
-    if (current.revision !== revision)
+    const current = await this.administrationCatalog();
+    if ((current?.revision ?? 0) !== revision)
       throw new BillingError(
         "PRECONDITION_FAILED",
         "The catalog changed; reload before editing.",
       );
-    validateCatalog(catalog, current.catalog);
+    validateCatalog(
+      catalog,
+      current?.catalog ?? null,
+      this.legacyCatalog ? undefined : this.schema,
+    );
     if (!(await this.repository.replaceCatalog(catalog, revision)))
       throw new BillingError(
         "PRECONDITION_FAILED",
@@ -62,6 +99,7 @@ export class BillingService {
     return { revision: revision + 1, catalog };
   }
   async synchronize(ownerSub: string): Promise<BillingState> {
+    await this.catalog();
     const id = await this.repository.identity(ownerSub);
     const generation = await this.repository.beginSync(ownerSub);
     const state = await this.provider.subscriber(id);

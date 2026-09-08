@@ -67,6 +67,7 @@ function nav(name) {
   for (const id of ["customers", "plans", "payments", "events"]) document.getElementById(id + "-nav").setAttribute("aria-current", id === name ? "page" : "false");
 }
 async function home() {
+  if (context && !context.catalogInitialized) return initializeCatalog();
   const scope = view(); nav("customers");
   try {
     const {data} = await api(scope, "/customers?page=" + page + "&pageSize=20&query=" + encodeURIComponent(query));
@@ -91,14 +92,11 @@ function limitLabel(key, value) {
 }
 function benefitGroups(capabilities, render) {
   const rows = Object.entries(capabilities).map(([key,value],index) => ({key,value,index}));
-  return [["cloud","Cloud quotas"],["client","Local unlock policy"],[undefined,"Benefits"]].map(([kind,title]) => {
-    const group = rows.filter(row => benefit(row.key)?.enforcement === kind);
-    return group.length ? '<section class="benefit-group"><h3>' + title + '</h3>' + (kind === 'client' ? '<p class="muted">Policy is configured here and enforced on the device. Device usage is not reported to this server.</p>' : '') + render(group) + '</section>' : '';
-  }).join('');
+  return '<section class="benefit-group"><h3>Benefits</h3>' + render(rows) + '</section>';
 }
 function membership(m,catalog) {
   const plan = [catalog.freePlan,...catalog.plans].find(p => p.id === m.planId) || {id:m.planId};
-  return '<div class="card"><h2>' + esc(planName(plan)) + '</h2><p class="muted">' + (m.grantEndsAt ? 'Valid until ' + esc(date(m.grantEndsAt)) : 'No fixed expiry') + '</p>' + benefitGroups(m.capabilities, rows => '<div class="table"><table><thead><tr><th>Benefit</th><th>Used</th><th>Limit</th><th>Period</th></tr></thead><tbody>' + rows.map(({key,value:v}) => '<tr><td>' + esc(benefitName(key)) + '<div class="id muted">' + esc(key) + '</div></td><td>' + esc(v.used === null ? 'On device' : v.limit === null ? 'Not metered' : v.used) + '</td><td>' + esc(limitLabel(key,v.limit)) + '</td><td>' + esc(v.period.replaceAll('_',' ')) + '</td></tr>').join('') + '</tbody></table></div>') + '</div>';
+  return '<div class="card"><h2>' + esc(planName(plan)) + '</h2><p class="muted">' + (m.grantEndsAt ? 'Valid until ' + esc(date(m.grantEndsAt)) : 'No fixed expiry') + '</p>' + benefitGroups(m.capabilities, rows => '<div class="table"><table><thead><tr><th>Benefit</th><th>Used</th><th>Limit</th><th>Period</th></tr></thead><tbody>' + rows.map(({key,value:v}) => '<tr><td>' + esc(benefitName(key)) + '<div class="id muted">' + esc(key) + '</div></td><td>' + esc(v.limit === null ? 'Not metered' : v.used === null ? 'Not reported' : v.used) + '</td><td>' + esc(limitLabel(key,v.limit)) + '</td><td>' + esc(v.period.replaceAll('_',' ')) + '</td></tr>').join('') + '</tbody></table></div>') + '</div>';
 }
 function benefitInputs(plan) {
   return benefitGroups(plan.capabilities, rows => rows.map(({key,value:v,index:i}) => '<label for="limit-' + i + '">' + esc(benefitName(key)) + '</label><p class="muted">' + esc(benefit(key)?.description || key) + '</p><input aria-label="' + esc(plan.id + ' / ' + key + ' limit (' + v.period + ')') + '" id="limit-' + i + '" name="limit-' + i + '" type="number" min="0" step="1" value="' + esc(v.limit === null ? '' : v.limit) + '"><small>' + esc((benefit(key)?.unit || 'units') + ' · ' + v.period.replaceAll('_',' ')) + ' · Current: ' + esc(limitLabel(key,v.limit)) + '</small>').join(''));
@@ -116,6 +114,7 @@ function accessDetails(user) {
   return '<div class="card"><h2>Provider entitlements</h2>' + (entitlements.length ? '<div class="table"><table><thead><tr><th>Entitlement / Product</th><th>Access</th><th>Status</th><th>Expiry</th><th>Renewal</th></tr></thead><tbody>' + entitlements.map((e,i) => '<tr><td><strong>' + esc(e.id) + '</strong><div class="id muted">' + esc(e.productId) + '</div><small>' + esc(e.store) + '</small></td><td>' + esc(user.access?.[i]?.kind || 'unknown') + '</td><td>' + esc((user.access?.[i]?.status || 'unknown').replaceAll('_',' ')) + '</td><td>' + esc(e.expiresAt ? date(e.expiresAt) : 'No expiry') + '</td><td>' + (e.willRenew ? 'Will renew' : 'Not renewing') + '</td></tr>').join('') + '</tbody></table></div>' : '<p class="muted">No synchronized provider entitlements.</p>') + '<div class="actions">' + dashboardLink() + '</div></div>';
 }
 async function showPayments() {
+  if (!context.catalogInitialized) return initializeCatalog();
   const scope = view(); nav("payments");
   try {
   const {catalog} = await loadCatalog(scope);
@@ -161,7 +160,24 @@ function bindEntitlement(catalog, planId, form) {
   if (Object.hasOwn(catalog.entitlementPlans,id)) throw new Error("This entitlement is already bound to a plan.");
   Object.defineProperty(catalog.entitlementPlans,id,{value:planId,enumerable:true,writable:true,configurable:true});
 }
+async function initializeCatalog() {
+  const scope = view(); nav("plans");
+  const capabilities = Object.fromEntries(Object.entries(context.benefitSchema).map(([id,value])=>[id,{limit:null,period:value.period}]));
+  const plan = {id:"new",capabilities};
+  content.innerHTML = '<h1>Set up plans</h1><p>Create the default plan for ' + esc(scope.environment) + '. Membership is unavailable until setup is complete.</p>' + (context.canConfigure ? '<form id="setup-form"><div class="card"><label for="default-id">Default plan ID</label><input id="default-id" name="id" required maxlength="100" pattern="([a-zA-Z0-9_.:]|-)+"><label for="default-name">Display name</label><input id="default-name" name="name" required maxlength="100"><p>Enter a limit for every benefit. Use 0 to disable access.</p>' + benefitInputs(plan) + '</div><label for="confirm">Type ' + esc(scope.environment) + ' to confirm</label><input id="confirm" name="environment" required><button type="submit">Create default plan</button></form>' : '<p>An administrator with configure permission must complete setup.</p>');
+  if (!context.canConfigure) return;
+  content.querySelectorAll('[name^="limit-"]').forEach(input=>input.required=true);
+  bindForm("setup-form",scope,async f=>{
+    const values=structuredClone(capabilities);
+    Object.values(values).forEach((v,index)=>{v.limit=Number(f.get("limit-"+index));});
+    await api(scope,"/catalog",{method:"PUT",headers:{"If-Match":'"0"',"Admin-Environment":f.get("environment")},body:JSON.stringify({freePlan:{id:String(f.get("id")).trim(),displayName:String(f.get("name")).trim(),capabilities:values},plans:[],entitlementPlans:{},honorGracePeriod:false})});
+    context.catalogInitialized=true;
+    await showPlans();
+  });
+  message("");
+}
 async function showPlans() {
+  if (!context.catalogInitialized) return initializeCatalog();
   const scope = view(); nav("plans");
   try {
     const {catalog} = await loadCatalog(scope);
@@ -225,6 +241,15 @@ async function configure(planId) {
       const shown = await (plan ? configure(planId) : showPayments());
       if (shown === active) message("Changes saved.");
     });
+    if (plan && plan.id !== catalog.freePlan.id) {
+      const bound = Object.values(catalog.entitlementPlans).includes(plan.id);
+      content.insertAdjacentHTML("beforeend", '<div class="card"><h2>Delete plan</h2><p>' + (bound ? 'Reassign its entitlement bindings before deleting this plan. Historical membership references also prevent deletion.' : 'Deletion is allowed only when no historical membership references this plan.') + '</p>' + (bound ? '' : '<form id="delete-plan-form"><label for="delete-confirm">Type ' + esc(scope.environment) + ' to confirm deletion</label><input id="delete-confirm" name="environment" required><button type="submit" class="secondary">Delete plan</button></form>') + '</div>');
+      if (!bound) bindForm("delete-plan-form",scope,async f=>{
+        const updated=structuredClone(catalog); updated.plans=updated.plans.filter(p=>p.id!==plan.id);
+        await api(scope,"/catalog",{method:"PUT",headers:{"If-Match":etag,"Admin-Environment":f.get("environment")},body:JSON.stringify(updated)});
+        await showPlans();
+      });
+    }
     message("");
     return scope;
   } catch(e) { report(e, scope); }
@@ -239,6 +264,7 @@ async function start() {
     document.getElementById("plans-nav").hidden = false;
     document.getElementById("payments-nav").hidden = false;
     document.getElementById("events-nav").hidden = !context.canInspectEvents;
+    if (!context.catalogInitialized) { await initializeCatalog(); return; }
     await (section === "plans" ? showPlans() : section === "payments" ? showPayments() : section === "events" && context.canInspectEvents ? showEvents() : home());
   } catch(e) { report(e, scope); }
 }

@@ -13,7 +13,6 @@ export type AdminEnvironment = "production" | "sandbox";
 export type AdminBenefitDefinition = {
   displayName: string;
   description: string;
-  enforcement: "cloud" | "client";
   unit: string;
 };
 export type AdminBenefitRegistry = Readonly<
@@ -57,7 +56,7 @@ export class AdminService {
     readonly paymentProvider?: AdminPaymentProvider,
     readonly paymentEvents?: AdminPaymentEvents,
   ) {
-    const names = Object.keys(billing.baseline.freePlan.capabilities);
+    const names = Object.keys(billing.schema.capabilities);
     if (
       Object.keys(benefits).length &&
       (Object.keys(benefits).length !== names.length ||
@@ -135,19 +134,7 @@ export class AdminService {
         ? await this.underlying.activeGrant(user.ownerSub, now)
         : null;
     const snapshot = await this.membership.snapshot(user.ownerSub);
-    const membership = {
-      ...snapshot,
-      capabilities: Object.fromEntries(
-        Object.entries(snapshot.capabilities).map(([name, value]) => [
-          name,
-          {
-            ...value,
-            used:
-              this.benefits[name]?.enforcement === "client" ? null : value.used,
-          },
-        ]),
-      ),
-    };
+    const membership = snapshot;
     return {
       ...user,
       subscription:

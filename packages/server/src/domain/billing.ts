@@ -1,5 +1,16 @@
 import type { MembershipPlan, MembershipGrant } from "./membership.js";
 
+export type BenefitSchema = {
+  type: "quota";
+  displayName: string;
+  description: string;
+  unit: string;
+  period: "lifetime" | "utc_month";
+};
+export type BillingSchema = {
+  capabilities: Readonly<Record<string, BenefitSchema>>;
+};
+
 export type BillingEnvironment = "production" | "sandbox";
 
 export type BillingCatalog = {
@@ -84,15 +95,16 @@ export function billingGrant(
 
 export function validateCatalog(
   catalog: BillingCatalog,
-  baseline: BillingCatalog,
+  baseline: BillingCatalog | null,
+  schema?: BillingSchema,
 ): void {
   const all = [catalog.freePlan, ...catalog.plans];
-  const original = [baseline.freePlan, ...baseline.plans];
+  const original = baseline ? [baseline.freePlan, ...baseline.plans] : [];
   const ids = all.map((p) => p.id);
   if (
-    catalog.freePlan.id !== baseline.freePlan.id ||
+    (baseline !== null && catalog.freePlan.id !== baseline.freePlan.id) ||
     ids.length !== new Set(ids).size ||
-    original.some((p) => !ids.includes(p.id))
+    (!schema && original.some((p) => !ids.includes(p.id)))
   ) {
     throw new BillingError(
       "INVALID_CATALOG",
@@ -100,9 +112,10 @@ export function validateCatalog(
     );
   }
   for (const plan of all) {
-    const capabilities = (
-      original.find((p) => p.id === plan.id) ?? baseline.freePlan
-    ).capabilities;
+    const capabilities =
+      schema?.capabilities ??
+      (original.find((p) => p.id === plan.id) ?? baseline!.freePlan)
+        .capabilities;
     if (
       plan.displayName !== undefined &&
       (!plan.displayName.trim() || plan.displayName.length > 100)
@@ -129,7 +142,7 @@ export function validateCatalog(
     }
   }
   if (
-    Object.keys(baseline.entitlementPlans).some(
+    Object.keys(baseline?.entitlementPlans ?? {}).some(
       (id) => !(id in catalog.entitlementPlans),
     ) ||
     Object.values(catalog.entitlementPlans).some(
