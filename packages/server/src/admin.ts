@@ -1,4 +1,9 @@
 export * from "./usecases/admin.js";
+export type {
+  AdminPaymentProvider,
+  AdminPaymentConfiguration,
+  AdminPaymentEvents,
+} from "./usecases/admin_payments.js";
 export {
   createAdmin,
   createAdminPage,

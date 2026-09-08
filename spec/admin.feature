@@ -83,3 +83,40 @@ Feature: Optional product administration
     Then only that plan's name and quotas can change
     And subscription mapping has a separate configuration form
     And switching environment returns to that environment's plan list
+
+  # Acceptance: S_ADMIN_SESSION_REFRESH status=implemented layers=http,browser
+  Scenario: Browser authentication uses the identity provider directly
+    Given the host configures a public browser client with PKCE
+    When an operator signs in through the identity provider
+    Then the browser validates the callback state and identity token
+    And protected API requests send the provider access token
+    And the server verifies issuer, audience, expiry and environment permissions
+    And the browser renews expired access using the provider refresh token
+    And concurrent tabs cannot redeem a rotating refresh token simultaneously
+    And logout discards browser credentials without an AppBase session row
+    And failed refresh requires sign-in without leaking credentials
+
+  # Acceptance: S_ADMIN_PAYMENT_WORKSPACE status=implemented layers=http,browser
+  Scenario: Inspect payment data and provider configuration
+    When an operator opens administration in an authorized environment
+    Then customer subscription status distinguishes purchased and complimentary access
+    And provider identities and processed notifications are inspectable
+    And configuration shows provider setup without disclosing credentials
+    And provider-specific management actions are identified as external
+
+  # Acceptance: S_ADMIN_BENEFIT_BOUNDARIES status=implemented layers=http,browser
+  Scenario: Distinguish cloud quotas from local unlock policy
+    Given the application defines the execution boundary and units of its benefits
+    When an operator inspects or edits a plan
+    Then cloud quotas and local unlock policies appear in separate groups
+    And local usage is not presented as a server-measured zero
+    And remote changes to existing local policy do not require a client release
+    And the administrator cannot reclassify enforcement or invent an unimplemented benefit
+
+  # Acceptance: S_ADMIN_PLAN_CREATE status=implemented layers=browser
+  Scenario: Configure a new plan for existing capabilities without a native release
+    When an administrator creates a plan from an existing plan template
+    Then its new identity and limits are saved using the catalog revision
+    And existing plans and benefit execution definitions remain unchanged
+    And the administrator can map a new provider entitlement to that plan
+    And duplicate identities and stale writes are rejected

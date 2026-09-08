@@ -1,3 +1,5 @@
+import { adminBrowserScript } from "./admin_browser_bundle.js";
+import type { AdminBrowserOidcConfiguration } from "../browser/admin_oauth.js";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
@@ -146,6 +148,9 @@ export function createAdmin<B extends object>(options: AdminHttpOptions<B>) {
       environment: options.environment,
       productName: options.productName,
       operator: p.sub,
+      benefits: service(c.env).benefits,
+      paymentProvider: service(c.env).paymentProvider?.configuration ?? null,
+      canInspectEvents: !!service(c.env).paymentEvents,
       environments: options.environments,
       canConfigure: await options.authorize(
         p,
@@ -153,6 +158,16 @@ export function createAdmin<B extends object>(options: AdminHttpOptions<B>) {
         options.environment,
       ),
     });
+  });
+  app.get("/events", async (c) => {
+    await authorize(c.req.raw, c.env, "admin:read");
+    const query = z
+      .object({
+        page: z.coerce.number().int().min(1).max(1000000).default(1),
+        pageSize: z.coerce.number().int().min(1).max(50).default(20),
+      })
+      .parse(c.req.query());
+    return c.json(await service(c.env).events(query.page, query.pageSize));
   });
   app.get("/customers", async (c) => {
     await authorize(c.req.raw, c.env, "admin:read");
@@ -230,6 +245,7 @@ export function createAdmin<B extends object>(options: AdminHttpOptions<B>) {
 
 /** Public static shell; each configured API independently authenticates and authorizes. */
 export function createAdminPage(options: {
+  oidc?: AdminBrowserOidcConfiguration;
   url: string;
   productName: string;
   environments: readonly { name: AdminEnvironment; url: string }[];
@@ -260,6 +276,36 @@ export function createAdminPage(options: {
     )
       throw new Error("Admin APIs must be fixed same-origin URLs.");
   }
+  const oidc = options.oidc
+    ? {
+        issuer: options.oidc.issuer,
+        clientId: options.oidc.clientId,
+        resource: options.oidc.resource,
+        redirectUri: options.oidc.redirectUri,
+        scopes: [...options.oidc.scopes],
+      }
+    : undefined;
+  if (oidc) {
+    const issuer = new URL(oidc.issuer);
+    const callback = new URL(oidc.redirectUri);
+    if (
+      issuer.protocol !== "https:" ||
+      issuer.username ||
+      issuer.password ||
+      issuer.search ||
+      issuer.hash ||
+      callback.origin !== base.origin ||
+      callback.pathname !== base.pathname.replace(/\/$/u, "") + "/callback" ||
+      callback.search ||
+      callback.hash ||
+      callback.username ||
+      callback.password ||
+      !oidc.clientId.trim()
+    )
+      throw new Error(
+        "Admin browser OIDC requires an HTTPS issuer and the fixed same-origin callback.",
+      );
+  }
   const app = new Hono();
   app.use("*", async (c, next) => {
     c.header("Cache-Control", "private, no-store");
@@ -267,7 +313,7 @@ export function createAdminPage(options: {
     c.header("X-Content-Type-Options", "nosniff");
     c.header(
       "Content-Security-Policy",
-      "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+      `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'${oidc ? " " + new URL(oidc.issuer).origin : ""}; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`,
     );
     await next();
   });
@@ -276,8 +322,15 @@ export function createAdminPage(options: {
       base.pathname.replace(/\/$/u, ""),
       options.productName,
       options.environments,
+      oidc,
     );
   app.get("/", (c) => c.html(html()));
+  if (oidc) {
+    app.get("/callback", (c) => c.html(html()));
+    app.get("/auth.js", (c) =>
+      c.body(adminBrowserScript, 200, { "Content-Type": "text/javascript" }),
+    );
+  }
   app.get("/admin.js", (c) =>
     c.body(adminScript, 200, { "Content-Type": "text/javascript" }),
   );

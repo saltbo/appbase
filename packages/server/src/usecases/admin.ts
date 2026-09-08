@@ -3,8 +3,22 @@ import type { MembershipService } from "./membership.js";
 import type { MembershipRepository } from "./membership_ports.js";
 import type { BillingState } from "../domain/billing.js";
 import { billingGrant } from "../domain/billing.js";
+import type {
+  AdminPaymentProvider,
+  AdminPaymentEvents,
+} from "./admin_payments.js";
 
 export type AdminEnvironment = "production" | "sandbox";
+/** App-owned semantics, separate from remotely editable plan limits. */
+export type AdminBenefitDefinition = {
+  displayName: string;
+  description: string;
+  enforcement: "cloud" | "client";
+  unit: string;
+};
+export type AdminBenefitRegistry = Readonly<
+  Record<string, AdminBenefitDefinition>
+>;
 export interface AdminUserDirectory {
   list(input: {
     page: number;
@@ -39,7 +53,31 @@ export class AdminService {
     readonly billing: BillingService,
     readonly underlying: MembershipRepository,
     readonly now: () => Date = () => new Date(),
-  ) {}
+    readonly benefits: AdminBenefitRegistry = {},
+    readonly paymentProvider?: AdminPaymentProvider,
+    readonly paymentEvents?: AdminPaymentEvents,
+  ) {
+    const names = Object.keys(billing.baseline.freePlan.capabilities);
+    if (
+      Object.keys(benefits).length &&
+      (Object.keys(benefits).length !== names.length ||
+        names.some((name) => !benefits[name]))
+    )
+      throw new Error(
+        "Admin benefit definitions must match the application's capabilities.",
+      );
+  }
+  async events(page: number, pageSize: number) {
+    if (!this.paymentEvents)
+      throw new AdminError(404, "Payment event inspection is not configured.");
+    const result = await this.paymentEvents.list(page, pageSize);
+    return {
+      ...result,
+      page,
+      pageSize,
+      totalPages: Math.ceil(result.totalItems / pageSize),
+    };
+  }
   async customers(input: { page: number; pageSize: number; query: string }) {
     const now = this.now().toISOString();
     const result = await this.users.list({ ...input, now });
@@ -96,13 +134,43 @@ export class AdminService {
       providerGrant === null
         ? await this.underlying.activeGrant(user.ownerSub, now)
         : null;
+    const snapshot = await this.membership.snapshot(user.ownerSub);
+    const membership = {
+      ...snapshot,
+      capabilities: Object.fromEntries(
+        Object.entries(snapshot.capabilities).map(([name, value]) => [
+          name,
+          {
+            ...value,
+            used:
+              this.benefits[name]?.enforcement === "client" ? null : value.used,
+          },
+        ]),
+      ),
+    };
     return {
       ...user,
       subscription:
         state === null
           ? null
           : { observedAt: state.observedAt, entitlements: state.entitlements },
-      membership: await this.membership.snapshot(user.ownerSub),
+      access: (state?.entitlements ?? []).map((entitlement) => ({
+        entitlementId: entitlement.id,
+        kind: this.paymentProvider?.accessKind(entitlement) ?? "unknown",
+        status:
+          entitlement.sandbox !== (this.environment === "sandbox")
+            ? "other_environment"
+            : entitlement.startsAt > now
+              ? "scheduled"
+              : entitlement.expiresAt === null || entitlement.expiresAt > now
+                ? "active"
+                : catalog.honorGracePeriod &&
+                    entitlement.graceEndsAt !== null &&
+                    entitlement.graceEndsAt > now
+                  ? "grace_period"
+                  : "expired",
+      })),
+      membership,
       source: providerGrant
         ? "subscription"
         : legacyGrant

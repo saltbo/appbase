@@ -1,3 +1,14 @@
+# Changelog
+
+## 0.7.0 - 2026-09-08
+
+- Add public-browser PKCE administration with provider token refresh and cross-tab coordination.
+- Separate app-owned cloud benefit semantics and local unlock policy in plan editing and usage inspection.
+- Add provider-neutral payment configuration, entitlement status and environment-scoped webhook receipt inspection.
+- Support creating plans and adding entitlement mappings through the administration UI.
+- Preserve native membership/sync contracts and existing payment data; no database migration is required.
+
+
 ## 0.4.0
 
 - Use RevenueCat promotional entitlements for complimentary membership, including lifetime access and isolated payment identities.
@@ -5,7 +16,6 @@
 - Retire empty manual-grant storage with a nonempty-data guard.
 - Keep catalog editing functional when a proxy weakens response ETags.
 
-# Changelog
 
 ## 0.3.0 - Unreleased
 

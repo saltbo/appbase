@@ -74,3 +74,26 @@ mounts to `/admin/api` and `/sandbox/admin/api`, keeping one page and OIDC callb
 Legacy page bookmarks redirect to `/admin`. No native customer API, sync protocol,
 billing identity, stored data or database migration changes. Previous server
 artifacts remain safe to roll back.
+
+## Server 0.7 administration
+
+The bundled administration UI and admin OpenAPI 0.3 are released together.
+Administration snapshots use `used: null` for benefits explicitly declared as
+client-enforced; native membership snapshots and sync protocol 2026-08-17 are
+unchanged. Admin context adds app-owned benefit definitions, provider inspection
+metadata and event-inspection availability. Optional inspection ports have
+explicit unconfigured states for existing hosts.
+
+Public-browser hosts supply `createAdminPage.oidc` and authenticate API requests
+with the identity provider's bearer tokens. Configure a public PKCE registration,
+its exact `/admin/callback` redirect and CORS origin with the host release. Tokens
+live in origin-scoped browser storage; there is no new session table or migration.
+The existing confidential adapter is retained for hosts that have not selected
+this flow. Browser bundles are served with the matching API and no-store headers.
+
+Rollback to a confidential host artifact requires restoring its previous identity
+provider registration and callback configuration as well as the Worker version.
+Do not roll back only the Worker after changing the client's registration type.
+Existing payment identities, entitlements, usage and catalog rows are untouched.
+New plan identities and mappings persist and remain valid with earlier catalog
+readers; never remove customer history merely to undo an admin UI release.

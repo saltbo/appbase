@@ -2,10 +2,12 @@ import type { BillingCatalog, BillingEnvironment } from "../domain/billing.js";
 import { BillingService, type BillingProvider } from "../usecases/billing.js";
 import { BillingMembershipRepository } from "../usecases/billing_membership_repository.js";
 import { MembershipService } from "../usecases/membership.js";
-import { AdminService } from "../usecases/admin.js";
+import { AdminService, type AdminBenefitRegistry } from "../usecases/admin.js";
 import { D1BillingRepository } from "./d1_billing_repository.js";
 import { D1MembershipRepository } from "./d1_membership_repository.js";
 import { D1AdminUserDirectory } from "./d1_admin_users.js";
+import { D1AdminPaymentEvents } from "./d1_admin_events.js";
+import type { AdminPaymentProvider } from "../usecases/admin_payments.js";
 
 /** Construct per request. Reuse its membership service for customer reads and quota enforcement. */
 export function createD1AdminServices(
@@ -14,6 +16,8 @@ export function createD1AdminServices(
   provider: BillingProvider,
   baseline: BillingCatalog,
   now: () => Date = () => new Date(),
+  benefits: AdminBenefitRegistry = {},
+  paymentProvider?: AdminPaymentProvider,
 ) {
   const billing = new BillingService(
     new D1BillingRepository(db, environment),
@@ -46,6 +50,9 @@ export function createD1AdminServices(
       billing,
       underlying,
       now,
+      benefits,
+      paymentProvider,
+      new D1AdminPaymentEvents(db, environment),
     ),
   };
 }
