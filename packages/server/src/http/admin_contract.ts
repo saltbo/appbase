@@ -2,7 +2,7 @@ export const adminOpenApi = {
   openapi: "3.1.0",
   info: {
     title: "AppBase Optional Administration",
-    version: "0.2.0",
+    version: "0.3.0",
     license: {
       name: "Apache-2.0",
       identifier: "Apache-2.0",
@@ -22,6 +22,9 @@ export const adminOpenApi = {
         operationId: "getAdminContext",
         summary: "getAdminContext",
         security: [
+          {
+            bearer: [],
+          },
           {
             session: [],
           },
@@ -64,6 +67,9 @@ export const adminOpenApi = {
         operationId: "findAdminUser",
         summary: "findAdminUser",
         security: [
+          {
+            bearer: [],
+          },
           {
             session: [],
           },
@@ -117,6 +123,9 @@ export const adminOpenApi = {
         summary: "getAdminCatalog",
         security: [
           {
+            bearer: [],
+          },
+          {
             session: [],
           },
         ],
@@ -164,6 +173,9 @@ export const adminOpenApi = {
         operationId: "replaceAdminCatalog",
         summary: "replaceAdminCatalog",
         security: [
+          {
+            bearer: [],
+          },
           {
             session: [],
           },
@@ -251,6 +263,9 @@ export const adminOpenApi = {
           "Bounded page-number pagination ordered by ownerSub. Search is a literal substring of the user or RevenueCat ID. Count and rows are read in one database batch. Lists contain payment accounts, not all identity-provider users.",
         security: [
           {
+            bearer: [],
+          },
+          {
             session: [],
           },
         ],
@@ -321,6 +336,69 @@ export const adminOpenApi = {
         },
       },
     },
+    "/events": {
+      get: {
+        operationId: "listAdminPaymentEvents",
+        summary: "List successfully processed payment notification receipts",
+        description:
+          "Environment-scoped receipts ordered by processing time descending, then ID. These are not complete transaction, failure or delivery histories.",
+        security: [
+          {
+            bearer: [],
+          },
+          {
+            session: [],
+          },
+        ],
+        "x-required-capabilities": ["admin:read"],
+        parameters: [
+          {
+            name: "page",
+            in: "query",
+            schema: {
+              type: "integer",
+              minimum: 1,
+              maximum: 1000000,
+              default: 1,
+            },
+          },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: {
+              type: "integer",
+              minimum: 1,
+              maximum: 50,
+              default: 20,
+            },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "Processed event page",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/Events",
+                },
+              },
+            },
+          },
+          "401": {
+            description: "Unauthenticated",
+          },
+          "403": {
+            description: "Environment access denied",
+          },
+          "422": {
+            description: "Invalid pagination or search",
+          },
+          "500": {
+            description: "Read failed",
+          },
+        },
+      },
+    },
   },
   components: {
     securitySchemes: {
@@ -330,6 +408,11 @@ export const adminOpenApi = {
         name: "__Host-appbase-admin",
         description:
           "OIDC BFF session. Every operation also requires host-authorized administrative capabilities; customer sessions alone never suffice.",
+      },
+      bearer: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
       },
     },
     schemas: {
@@ -478,8 +561,10 @@ export const adminOpenApi = {
                   enum: ["lifetime", "utc_month"],
                 },
                 used: {
-                  type: "integer",
+                  type: ["integer", "null"],
                   minimum: 0,
+                  description:
+                    "Cloud-measured usage, or null for client-enforced benefits.",
                 },
                 periodKey: {
                   type: "string",
@@ -544,8 +629,39 @@ export const adminOpenApi = {
             type: "string",
             enum: ["subscription", "legacy", "default"],
           },
+          access: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                entitlementId: {
+                  type: "string",
+                },
+                kind: {
+                  enum: ["purchased", "complimentary", "unknown"],
+                },
+                status: {
+                  enum: [
+                    "other_environment",
+                    "scheduled",
+                    "active",
+                    "grace_period",
+                    "expired",
+                  ],
+                },
+              },
+              required: ["entitlementId", "kind", "status"],
+              additionalProperties: false,
+            },
+          },
         },
-        required: ["ownerSub", "membership", "subscription", "source"],
+        required: [
+          "ownerSub",
+          "membership",
+          "subscription",
+          "source",
+          "access",
+        ],
         additionalProperties: false,
       },
       Context: {
@@ -580,6 +696,27 @@ export const adminOpenApi = {
           canConfigure: {
             type: "boolean",
           },
+          benefits: {
+            type: "object",
+            description:
+              "App-owned execution semantics, not writable through the catalog. Empty for hosts without a registry.",
+            additionalProperties: {
+              $ref: "#/components/schemas/BenefitDefinition",
+            },
+          },
+          paymentProvider: {
+            anyOf: [
+              {
+                $ref: "#/components/schemas/PaymentConfiguration",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          canInspectEvents: {
+            type: "boolean",
+          },
         },
         required: [
           "environment",
@@ -587,6 +724,9 @@ export const adminOpenApi = {
           "operator",
           "environments",
           "canConfigure",
+          "benefits",
+          "paymentProvider",
+          "canInspectEvents",
         ],
         additionalProperties: false,
       },
@@ -659,6 +799,108 @@ export const adminOpenApi = {
             additionalProperties: false,
           },
         },
+      },
+      BenefitDefinition: {
+        type: "object",
+        properties: {
+          displayName: {
+            type: "string",
+          },
+          description: {
+            type: "string",
+          },
+          enforcement: {
+            enum: ["cloud", "client"],
+          },
+          unit: {
+            type: "string",
+          },
+        },
+        required: ["displayName", "description", "enforcement", "unit"],
+        additionalProperties: false,
+      },
+      PaymentConfiguration: {
+        type: "object",
+        properties: {
+          providerId: {
+            type: "string",
+          },
+          providerName: {
+            type: "string",
+          },
+          dashboardUrl: {
+            type: ["string", "null"],
+            format: "uri",
+          },
+          webhookPath: {
+            type: ["string", "null"],
+          },
+          settings: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: {
+                  type: "string",
+                },
+                configured: {
+                  type: "boolean",
+                },
+              },
+              required: ["name", "configured"],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: [
+          "providerId",
+          "providerName",
+          "dashboardUrl",
+          "webhookPath",
+          "settings",
+        ],
+        additionalProperties: false,
+      },
+      Events: {
+        type: "object",
+        properties: {
+          items: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: {
+                  type: "string",
+                },
+                processedAt: {
+                  type: "string",
+                  format: "date-time",
+                },
+              },
+              required: ["id", "processedAt"],
+              additionalProperties: false,
+            },
+          },
+          totalItems: {
+            type: "integer",
+            minimum: 0,
+          },
+          page: {
+            type: "integer",
+            minimum: 1,
+          },
+          pageSize: {
+            type: "integer",
+            minimum: 1,
+            maximum: 50,
+          },
+          totalPages: {
+            type: "integer",
+            minimum: 0,
+          },
+        },
+        required: ["items", "totalItems", "page", "pageSize", "totalPages"],
+        additionalProperties: false,
       },
     },
   },

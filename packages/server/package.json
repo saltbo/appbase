@@ -1,6 +1,6 @@
 {
   "name": "@saltbo/appbase-server",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Cloudflare-native server framework for AppBase local-first synchronization",
   "type": "module",
   "files": [
@@ -38,7 +38,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node scripts/build-admin.mjs && tsc -p tsconfig.build.json",
     "prepare": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -54,6 +54,7 @@
     "@cloudflare/workers-types": "5.20260712.1",
     "@types/node": "24.10.13",
     "@vitest/coverage-v8": "4.1.10",
+    "esbuild": "0.28.1",
     "miniflare": "5.20260811.1-alpha",
     "playwright": "1.63.0",
     "typescript": "6.0.3",
