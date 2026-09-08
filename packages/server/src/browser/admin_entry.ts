@@ -25,6 +25,11 @@ const ready = (async () => {
     history.replaceState(null, "", document.body.dataset.base!);
     await oidc.callback(url);
   }
+  const expiry = store.expiresAt();
+  if (expiry !== null)
+    console.debug(
+      "[AppBase admin] stored access expiry: " + new Date(expiry).toISOString(),
+    );
 })();
 
 const auth = {

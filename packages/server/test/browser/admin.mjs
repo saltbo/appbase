@@ -48,10 +48,10 @@ const db = { prepare, batch: async statements => Promise.all(statements.map(s =>
 const catalog = {
   freePlan: {
     id: "reader",
-    capabilities: { ai: { limit: 2, period: "utc_month" }, sources: {limit: 1, period: "lifetime"} },
+    capabilities: { ai: { limit: 2, period: "utc_month" }, sources: {limit: 1, period: "lifetime"}, metadata: {limit:null,period:"lifetime"} },
   },
   plans: [
-    { id: "studio", capabilities: { ai: { limit: 100, period: "utc_month" }, sources: {limit: null, period: "lifetime"} } },
+    { id: "studio", capabilities: { ai: { limit: 100, period: "utc_month" }, sources: {limit: null, period: "lifetime"}, metadata: {limit:null,period:"lifetime"} } },
   ],
   entitlementPlans: { premium: "studio" },
   honorGracePeriod: true,
@@ -62,7 +62,7 @@ for (const environment of ["production", "sandbox"]) {
   const billing = new BillingService(new D1BillingRepository(db, environment), {subscriber: async () => { throw new Error("No network allowed"); }}, catalog);
   const underlying = new BillingMembershipRepository(new D1MembershipRepository(db, environment), billing.repository, async () => (await billing.catalog()).catalog, environment === "sandbox");
   const membership = new MembershipService(underlying, {...catalog, loadCatalog: async () => (await billing.catalog()).catalog});
-  services[environment] = new AdminService(environment, new D1AdminUserDirectory(db,environment),membership,billing,underlying,()=>new Date(),{ai:{displayName:"AI requests",description:"Cloud AI calls",enforcement:"cloud",unit:"requests"},sources:{displayName:"Sources",description:"Device sources",enforcement:"client",unit:"sources"}},revenueCatAdministration({apiKeyConfigured:true,webhookAuthorizationConfigured:false,iosSdkConfigured:true,androidSdkConfigured:false}),new D1AdminPaymentEvents(db,environment));
+  services[environment] = new AdminService(environment, new D1AdminUserDirectory(db,environment),membership,billing,underlying,()=>new Date(),{ai:{displayName:"AI requests",description:"Cloud AI calls",enforcement:"cloud",unit:"requests"},sources:{displayName:"Sources",description:"Device sources",enforcement:"client",unit:"sources"},metadata:{displayName:"Metadata",description:"Unmetered cloud access",enforcement:"cloud",unit:"requests"}},revenueCatAdministration({apiKeyConfigured:true,webhookAuthorizationConfigured:false,iosSdkConfigured:true,androidSdkConfigured:false}),new D1AdminPaymentEvents(db,environment));
 }
 let allowed = true, configureAllowed = true;
 const environments = [{name:"production",url:"https://admin.example.test/admin/api"},{name:"sandbox",url:"https://admin.example.test/sandbox/admin/api"}];
@@ -130,6 +130,7 @@ try {
   await page.getByRole("heading",{name:"Cloud quotas",exact:true}).waitFor();
   await page.getByRole("heading",{name:"Local unlock policy",exact:true}).waitFor();
   await page.getByRole("cell",{name:"On device",exact:true}).waitFor();
+  await page.getByRole("cell",{name:"Not metered",exact:true}).waitFor();
   await page.screenshot({path:"/tmp/appbase-admin-benefits.png",fullPage:true});
   // Covers: S_ADMIN_PAYMENT_WORKSPACE case=happy_path
   await page.getByRole("button", {name:"Payment settings",exact:true}).click();
@@ -196,8 +197,8 @@ try {
   await page.getByRole("heading", {name:"Plans",exact:true}).waitFor();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.screenshot({path:"/tmp/appbase-admin-plans-mobile.png",fullPage:true});
-  await page.getByRole("button",{name:"Subscription settings",exact:true}).click();
-  await page.getByLabel("Entitlement premium").waitFor();
+  await page.getByRole("button",{name:"Payment settings",exact:true}).click();
+  await page.getByRole("button",{name:"Edit grace period policy",exact:true}).click();
   assert.equal(await page.getByLabel("Display name for reader").count(),0);
   await page.getByLabel("Honor provider grace periods").uncheck();
   await page.getByLabel("Type sandbox to confirm").fill("sandbox");
@@ -208,26 +209,44 @@ try {
   assert.deepEqual((await services.production.billing.catalog()).catalog.plans,catalog.plans);
   // Covers: S_ADMIN_PLAN_CREATE case=happy_path
   // Covers: S_ADMIN_PLAN_CREATE case=error_path
-  await page.getByRole("button", {name:"Back to plans",exact:true}).click();
+  await page.getByRole("button", {name:"Plans & quotas",exact:true}).click();
   await page.getByRole("button", {name:"Create plan",exact:true}).click();
+  // Covers: S_ADMIN_PLAN_BINDING case=happy_path
+  // Covers: S_ADMIN_PLAN_BINDING case=error_path
+  await page.getByLabel("Entitlement ID",{exact:true}).fill("creator_access");
+  await page.getByLabel("reader / sources limit (lifetime)",{exact:true}).fill("3");
   await page.getByLabel("Plan ID",{exact:true}).fill("studio");
   await page.getByLabel("Display name",{exact:true}).fill("Creator");
   await page.getByLabel("Type sandbox to confirm").fill("sandbox");
+  await page.screenshot({path:"/tmp/appbase-admin-create-plan.png",fullPage:true});
   await page.getByRole("button", {name:"Create plan",exact:true}).click();
   await page.getByRole("status").filter({hasText:"already exists"}).waitFor();
   await page.getByLabel("Plan ID",{exact:true}).fill("creator");
+  await page.getByLabel("Entitlement ID",{exact:true}).fill("premium");
+  await page.getByRole("button", {name:"Create plan",exact:true}).click();
+  await page.getByRole("status").filter({hasText:"already bound"}).waitFor();
+  assert.equal((await services.sandbox.billing.catalog()).catalog.plans.some(p=>p.id==="creator"),false);
+  await page.getByLabel("Entitlement ID",{exact:true}).fill("creator_access");
   await page.getByRole("button", {name:"Create plan",exact:true}).click();
   await page.getByRole("heading", {name:"Edit Creator",exact:true}).waitFor();
-  await page.getByRole("button", {name:"Back to plans",exact:true}).click();
-  await page.getByRole("button", {name:"Subscription settings",exact:true}).click();
-  await page.getByLabel("New entitlement ID",{exact:true}).fill("creator_access");
-  await page.getByLabel("Plan for new entitlement",{exact:true}).selectOption("creator");
+  await page.getByLabel("Selection priority",{exact:true}).selectOption("0");
+  await page.getByLabel("Additional entitlement ID",{exact:true}).fill("creator_bonus");
   await page.getByLabel("Type sandbox to confirm").fill("sandbox");
-  await page.getByRole("button", {name:"Save changes",exact:true}).click();
+  await page.getByRole("button",{name:"Save changes",exact:true}).click();
   await page.getByRole("status").filter({hasText:"Changes saved"}).waitFor();
+  assert.equal((await services.sandbox.billing.catalog()).catalog.plans[0].id,"creator");
+  assert.equal((await services.sandbox.billing.catalog()).catalog.entitlementPlans.creator_bonus,"creator");
+  await page.getByLabel("Entitlement creator_bonus",{exact:true}).selectOption("studio");
+  await page.getByLabel("Type sandbox to confirm").fill("sandbox");
+  await page.getByRole("button",{name:"Save changes",exact:true}).click();
+  await page.getByRole("status").filter({hasText:"Changes saved"}).waitFor();
+  assert.equal((await services.sandbox.billing.catalog()).catalog.entitlementPlans.creator_bonus,"studio");
+  await page.getByRole("button", {name:"Back to plans",exact:true}).click();
+  await page.getByRole("row").filter({hasText:"creator_access"}).waitFor();
+  await page.screenshot({path:"/tmp/appbase-admin-plan-bindings.png",fullPage:true});
   const sandboxCatalog=(await services.sandbox.billing.catalog()).catalog;
   assert.equal(sandboxCatalog.entitlementPlans.creator_access,"creator");
-  assert.equal(sandboxCatalog.plans.find(p=>p.id==='creator').capabilities.sources.limit,1);
+  assert.equal(sandboxCatalog.plans.find(p=>p.id==='creator').capabilities.sources.limit,3);
   assert.deepEqual((await services.production.billing.catalog()).catalog.plans,catalog.plans);
 
   // Covers: S_ADMIN_PLAN_LIST case=error_path

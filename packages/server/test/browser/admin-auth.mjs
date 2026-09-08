@@ -14,7 +14,7 @@ const app = new Hono().route('/admin',createAdminPage({url:origin+'/admin',produ
 const keys = await generateKeyPair('RS256');
 const jwk = {...await exportJWK(keys.publicKey),kid:'test',alg:'RS256',use:'sig'};
 let nonce, challenge, refreshes = 0, codeExchanges = 0;
-const errors=[];
+const errors=[], diagnostics=[];
 const token = (aud,extra={})=>new SignJWT(extra).setProtectedHeader({alg:'RS256',kid:'test'}).setIssuer(issuer).setAudience(aud).setSubject('operator').setIssuedAt().setExpirationTime('5m').sign(keys.privateKey);
 const browser = await chromium.launch({headless:true,...(process.env.APPBASE_CHROME_PATH?{executablePath:process.env.APPBASE_CHROME_PATH}:{})});
 try {
@@ -58,7 +58,7 @@ try {
   const response=await app.fetch(new Request(r.url(),{headers:r.headers()}));
   return route.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:Buffer.from(await response.arrayBuffer())});
  });
- const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+ const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.text().startsWith('[AppBase admin]'))diagnostics.push(m.text());});
  await page.clock.install();
  await page.goto(origin+'/admin');
  await page.getByRole('link',{name:'Sign in with OIDC'}).click();
@@ -80,5 +80,7 @@ try {
  await page.getByRole('link',{name:'Sign in with OIDC'}).waitFor();
  assert.equal(await page.evaluate(()=>Object.keys(localStorage).filter(k=>k.startsWith('appbase.admin:')).length),0);
  assert.deepEqual(errors,[]);
+ assert.ok(diagnostics.some(line=>line==='[AppBase admin] token refresh completed'));
+ assert.ok(diagnostics.every(line=>/^\[AppBase admin\] (stored access expiry: [0-9TZ:.+-]+|token refresh completed)$/.test(line)));
  console.log('PASS: browser PKCE, signed callback, bearer API, refresh, environment switch and cookieless logout');
 } finally {await browser.close();}

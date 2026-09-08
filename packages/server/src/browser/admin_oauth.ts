@@ -154,8 +154,9 @@ export class AdminBrowserOidc {
     };
   }
 
-  accessToken(): Promise<string> {
-    return this.credentials.accessToken(async (current) => {
+  async accessToken(): Promise<string> {
+    let refreshed = false;
+    const accessToken = await this.credentials.accessToken(async (current) => {
       const as = await this.server();
       const response = await oauth.refreshTokenGrantRequest(
         as,
@@ -180,8 +181,12 @@ export class AdminBrowserOidc {
         );
       const subject =
         oauth.getValidatedIdTokenClaims(result)?.sub ?? current.subject;
-      return this.tokenSet(result, subject, current.refreshToken);
+      const next = this.tokenSet(result, subject, current.refreshToken);
+      refreshed = true;
+      return next;
     });
+    if (refreshed) console.debug("[AppBase admin] token refresh completed");
+    return accessToken;
   }
 
   signOut(): Promise<void> {

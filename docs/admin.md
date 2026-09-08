@@ -29,16 +29,21 @@ management URLs and arbitrary SQL are never exposed.
 
 The stack remains TypeScript, Hono and D1. The UI is a small same-origin HTML/JS
 module with native controls; no separate application framework or build pipeline.
-The product supplies its name, catalog, authorization policy and OIDC registration.
+The product supplies its name, bootstrap catalog, authorization policy and OIDC registration.
+The bootstrap catalog is used only before an environment has a stored catalog;
+administrator changes persist in D1 and take precedence over bootstrap values.
 UI uses remote displayName where present, otherwise the stable plan id.
 The Plans page lists configured free and paid plans before any form is opened.
-Read-only operators can browse this list. Authorized operators edit one plan’s
-name and limits on a secondary page; subscription mappings and grace policy
-have a separate settings page. Environment switching returns to the selected
-environment’s list, discarding the old editor. Catalog writes retain ETag conflict
-protection and preserve fields outside the selected edit. Adding a
-new tier or entitlement mapping remains available through the existing catalog
-API; sale/retirement and store prices remain provider-owned.
+Read-only operators can inspect entitlement bindings and plan selection priority.
+Creation copies a template and lets operators set limits and bind an existing
+provider entitlement in the same atomic catalog update. Editing a plan includes
+its limits, priority, existing bindings and additional entitlement bindings.
+Duplicate bindings are rejected; existing entitlement IDs are retained for
+historical purchases. Reassigning a binding affects its existing holders.
+Grace period policy is viewed and edited under Payment settings. Provider secrets
+remain deployment configuration; prices, products and gifts remain provider-owned.
+Environment switching discards the old editor and loads the selected environment.
+Catalog writes retain ETag conflict protection and preserve unrelated fields.
 
 ## Complimentary access in RevenueCat
 
