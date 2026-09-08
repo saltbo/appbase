@@ -297,3 +297,86 @@ describe("admin storage boundaries", () => {
     expect(await store.get("hash", 0)).toBeNull();
   });
 });
+
+// Covers: S_ADMIN_CUSTOMERS case=happy_path
+// Covers: S_ADMIN_CUSTOMERS case=error_path
+// Covers: S_ADMIN_CUSTOMERS case=contract
+describe("customer collection", () => {
+  it("paginates, searches literally and projects membership without private state", async () => {
+    const s = http();
+    await s.billing.synchronize("user");
+    s.sqlite.exec(
+      "INSERT INTO appbase_billing_accounts(environment,owner_sub,app_user_id) VALUES ('production','a_percent%','payment-a'),('production','b','payment-b'),('sandbox','sandbox-only','sandbox-id')",
+    );
+    const first = await s.request("/customers?pageSize=2");
+    expect(first.status).toBe(200);
+    const body =
+      await first.json<Awaited<ReturnType<typeof s.service.customers>>>();
+    expect(body.pagination).toEqual({
+      page: 1,
+      pageSize: 2,
+      totalItems: 3,
+      totalPages: 2,
+    });
+    expect(body.items.map((c: { ownerSub: string }) => c.ownerSub)).toEqual([
+      "a_percent%",
+      "b",
+    ]);
+    expect(first.headers.get("Link")).toContain('rel="next"');
+    const second = await (
+      await s.request("/customers?pageSize=2&page=2")
+    ).json<Awaited<ReturnType<typeof s.service.customers>>>();
+    expect(second.items[0]).toMatchObject({
+      ownerSub: "user",
+      planId: "studio",
+      isPaid: true,
+      synchronizedAt: "2026-09-07T00:00:00.000Z",
+    });
+    expect(Object.keys(second.items[0]!).sort()).toEqual(
+      [
+        "ownerSub",
+        "appUserId",
+        "planId",
+        "planName",
+        "isPaid",
+        "synchronizedAt",
+      ].sort(),
+    );
+    expect(
+      (
+        await (
+          await s.request("/customers?query=%25")
+        ).json<Awaited<ReturnType<typeof s.service.customers>>>()
+      ).pagination.totalItems,
+    ).toBe(1);
+    expect(
+      (
+        await (
+          await s.request("/customers?query=payment-b")
+        ).json<Awaited<ReturnType<typeof s.service.customers>>>()
+      ).items[0]!.ownerSub,
+    ).toBe("b");
+    expect(
+      (
+        await (
+          await s.request("/customers?query=sandbox-only")
+        ).json<Awaited<ReturnType<typeof s.service.customers>>>()
+      ).items,
+    ).toEqual([]);
+    for (const query of [
+      "page=0",
+      "page=1.5",
+      "pageSize=51",
+      "page=999999999999999",
+      "query=" + "x".repeat(201),
+    ])
+      expect((await s.request("/customers?" + query)).status).toBe(422);
+    expect(
+      (
+        await s.request("/customers", "GET", undefined, {
+          Authorization: "appbase:read",
+        })
+      ).status,
+    ).toBe(403);
+  });
+});

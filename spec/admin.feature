@@ -55,3 +55,21 @@ Feature: Optional product administration
     When membership usage, subscription state, or catalog changes
     Then successful conditional writes are reported as successful
     And rejected conditional writes remain conflicts
+
+  # Acceptance: S_ADMIN_CUSTOMERS status=implemented layers=http,integration,browser
+  Scenario: Browse payment customers without exposing private records
+    Given payment accounts exist in both environments
+    When an operator opens administration
+    Then a bounded searchable customer list shows membership and last synchronization
+    And pagination is ordered by the unique login subject
+    And selecting a customer opens membership details
+    And encrypted payloads and authentication tokens are never listed
+
+  # Acceptance: S_ADMIN_SINGLE_PAGE status=implemented layers=browser,http
+  Scenario: Switch API environments within one page
+    Given one administration page and login callback
+    When an operator switches production and sandbox
+    Then the page URL remains unchanged
+    And requests use the selected environment API path
+    And old responses cannot replace the new environment view
+    And write requests retain the environment in which their form was opened

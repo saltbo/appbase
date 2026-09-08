@@ -64,3 +64,13 @@ cursors and native membership snapshots are unchanged.
 RevenueCat owns complimentary access. Catalog concurrency still uses a strong
 If-Match token; the UI obtains its numeric revision from AppBase-Catalog-Revision
 to tolerate proxy weakening of response ETags.
+
+## Server 0.5 administration
+
+The optional admin directory adds a required `list` port for bounded customer
+pages. Hosts may use `D1AdminUserDirectory` or implement this method. The single
+page helper uses explicit same-origin API URLs; Zigloo moves optional admin API
+mounts to `/admin/api` and `/sandbox/admin/api`, keeping one page and OIDC callback.
+Legacy page bookmarks redirect to `/admin`. No native customer API, sync protocol,
+billing identity, stored data or database migration changes. Previous server
+artifacts remain safe to roll back.

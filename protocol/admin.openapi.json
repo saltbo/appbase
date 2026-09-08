@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AppBase Optional Administration",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -10,10 +10,10 @@
   },
   "servers": [
     {
-      "url": "https://api.example/admin"
+      "url": "https://api.example/admin/api"
     },
     {
-      "url": "https://api.example/sandbox/admin"
+      "url": "https://api.example/sandbox/admin/api"
     }
   ],
   "paths": {
@@ -239,6 +239,82 @@
                 "$ref": "#/components/schemas/Catalog"
               }
             }
+          }
+        }
+      }
+    },
+    "/customers": {
+      "get": {
+        "operationId": "listAdminCustomers",
+        "summary": "List payment customers in the selected environment",
+        "description": "Bounded page-number pagination ordered by ownerSub. Search is a literal substring of the user or RevenueCat ID. Count and rows are read in one database batch. Lists contain payment accounts, not all identity-provider users.",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-capabilities": ["admin:read"],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000,
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "default": ""
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Customer page",
+            "headers": {
+              "Link": {
+                "description": "First, previous, next and last page links when applicable",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customers"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Environment access denied"
+          },
+          "422": {
+            "description": "Invalid pagination or search"
+          },
+          "500": {
+            "description": "Read failed"
           }
         }
       }
@@ -515,6 +591,76 @@
           "canConfigure"
         ],
         "additionalProperties": false
+      },
+      "Customer": {
+        "type": "object",
+        "properties": {
+          "ownerSub": {
+            "type": "string"
+          },
+          "appUserId": {
+            "type": "string"
+          },
+          "planId": {
+            "type": "string"
+          },
+          "planName": {
+            "type": "string"
+          },
+          "isPaid": {
+            "type": "boolean"
+          },
+          "synchronizedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "ownerSub",
+          "appUserId",
+          "planId",
+          "planName",
+          "isPaid",
+          "synchronizedAt"
+        ],
+        "additionalProperties": false
+      },
+      "Customers": {
+        "type": "object",
+        "required": ["items", "pagination"],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Customer"
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "pageSize": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50
+              },
+              "totalItems": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "totalPages": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": ["page", "pageSize", "totalItems", "totalPages"],
+            "additionalProperties": false
+          }
+        }
       }
     }
   }
