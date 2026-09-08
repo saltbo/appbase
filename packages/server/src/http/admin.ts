@@ -38,6 +38,8 @@ const reason = z.string().trim().min(1).max(2000);
 const snapshot = z
   .object({
     planId: text,
+    displayName: text,
+    isPaid: z.boolean(),
     grantEndsAt: z.string().nullable(),
     capabilities: z.record(
       z.string(),

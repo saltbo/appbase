@@ -2,6 +2,23 @@ import type { AdminSessionStore } from "../http/admin_oidc.js";
 import type { Principal } from "../usecases/ports.js";
 export class D1AdminSessionStore implements AdminSessionStore {
   constructor(private readonly db: D1Database) {}
+  async startAttempt(idHash: string, expiresAt: number) {
+    await this.db
+      .prepare(
+        "INSERT INTO appbase_admin_login_attempts(id_hash,expires_at) VALUES (?1,?2)",
+      )
+      .bind(idHash, expiresAt)
+      .run();
+  }
+  async consumeAttempt(idHash: string, now: number) {
+    const result = await this.db
+      .prepare(
+        "DELETE FROM appbase_admin_login_attempts WHERE id_hash=?1 AND expires_at>?2",
+      )
+      .bind(idHash, now)
+      .run();
+    return result.meta.changes === 1;
+  }
   async put(idHash: string, principal: Principal, expiresAt: number) {
     await this.db
       .prepare(

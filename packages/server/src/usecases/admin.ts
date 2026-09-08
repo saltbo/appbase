@@ -4,6 +4,8 @@ import type {
 } from "../domain/membership.js";
 import type { BillingService } from "./billing.js";
 import type { MembershipService } from "./membership.js";
+import type { MembershipRepository } from "./membership_ports.js";
+import { billingGrant } from "../domain/billing.js";
 
 export type AdminEnvironment = "production" | "sandbox";
 export type ManualGrant = MembershipGrant & {
@@ -48,6 +50,7 @@ export class AdminService {
     readonly users: AdminUserDirectory,
     readonly membership: MembershipService,
     readonly billing: BillingService,
+    readonly underlying: MembershipRepository,
     readonly now: () => Date = () => new Date(),
   ) {}
   async user(query: string) {
@@ -58,6 +61,18 @@ export class AdminService {
         "No known user matches this subject or payment identity.",
       );
     const state = await this.billing.repository.state(user.ownerSub);
+    const now = this.now().toISOString();
+    const manualGrant = await this.grants.activeGrant(user.ownerSub, now);
+    const subscriptionGrant = billingGrant(
+      state,
+      (await this.billing.catalog()).catalog,
+      now,
+      this.grants.environment === "sandbox",
+    );
+    const legacyGrant =
+      manualGrant === null && subscriptionGrant === null
+        ? await this.underlying.activeGrant(user.ownerSub, now)
+        : null;
     return {
       ...user,
       subscription:
@@ -65,10 +80,14 @@ export class AdminService {
           ? null
           : { observedAt: state.observedAt, entitlements: state.entitlements },
       membership: await this.membership.snapshot(user.ownerSub),
-      manualGrant: await this.grants.activeGrant(
-        user.ownerSub,
-        this.now().toISOString(),
-      ),
+      source: manualGrant
+        ? "manual"
+        : subscriptionGrant
+          ? "subscription"
+          : legacyGrant
+            ? "legacy"
+            : "default",
+      manualGrant,
     };
   }
   async create(
@@ -85,8 +104,7 @@ export class AdminService {
   ) {
     const current = await this.user(input.ownerSub);
     if (
-      JSON.stringify(current.membership) !==
-      JSON.stringify(input.expectedMembership)
+      snapshotKey(current.membership) !== snapshotKey(input.expectedMembership)
     )
       throw new AdminError(
         409,
@@ -143,4 +161,16 @@ export class AdminService {
       );
     return this.grants.get(id);
   }
+}
+
+function snapshotKey(m: MembershipSnapshot): string {
+  return JSON.stringify([
+    m.planId,
+    m.displayName,
+    m.isPaid,
+    m.grantEndsAt,
+    Object.entries(m.capabilities)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, v]) => [key, v.limit, v.period, v.periodKey, v.used]),
+  ]);
 }

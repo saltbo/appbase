@@ -11,7 +11,12 @@ import { MembershipService } from "../src/usecases/membership.js";
 import type { BillingCatalog, BillingState } from "../src/domain/billing.js";
 export function sqlite() {
   const sqlite = new DatabaseSync(":memory:");
-  for (const name of ["0001_appbase.sql", "0003_billing.sql", "0005_admin.sql"])
+  for (const name of [
+    "0001_appbase.sql",
+    "0003_billing.sql",
+    "0004_billing_environments.sql",
+    "0005_admin.sql",
+  ])
     sqlite.exec(
       readFileSync(new URL("../migrations/" + name, import.meta.url), "utf8"),
     );
@@ -67,13 +72,13 @@ export function setup(
 ) {
   let now = new Date("2026-09-07T00:00:00.000Z");
   const billing = new BillingService(
-    new D1BillingRepository(database.db),
+    new D1BillingRepository(database.db, environment),
     { subscriber: async () => state },
     catalog,
   );
   const grants = new D1AdminRepository(database.db, environment);
   const underlying = new BillingMembershipRepository(
-    new D1MembershipRepository(database.db),
+    new D1MembershipRepository(database.db, environment),
     billing.repository,
     async () => (await billing.catalog()).catalog,
     environment === "sandbox",
@@ -89,6 +94,7 @@ export function setup(
     { find: async (q) => (q === "user" ? { ownerSub: "user" } : null) },
     membership,
     billing,
+    underlying,
     () => now,
   );
   return {

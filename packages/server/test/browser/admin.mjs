@@ -23,7 +23,12 @@ import { MembershipService } from "../../dist/membership.js";
 // Covers: S_ADMIN_UI case=error_path
 // Native browser/CSP against the actual Hono module and SQLite. No live services.
 const sql = new DatabaseSync(":memory:");
-for (const name of ["0001_appbase.sql", "0003_billing.sql", "0005_admin.sql"])
+for (const name of [
+  "0001_appbase.sql",
+  "0003_billing.sql",
+  "0004_billing_environments.sql",
+  "0005_admin.sql",
+])
   sql.exec(
     readFileSync(new URL("../../migrations/" + name, import.meta.url), "utf8"),
   );
@@ -75,6 +80,7 @@ const service = new AdminService(
   { find: async (q) => (q === "customer-42" ? { ownerSub: q } : null) },
   membership,
   billing,
+  new D1MembershipRepository(db),
 );
 let allowed = true;
 const app = new Hono().route(
@@ -178,18 +184,18 @@ try {
   assert.equal((await membership.snapshot("customer-42")).planId, "reader");
   await page.getByRole("button", { name: "Back to search" }).click();
   await page.getByRole("button", { name: "Manage plans and quotas" }).click();
-  await page.getByLabel("Catalog configuration").waitFor();
-  const updated = JSON.parse(
-    await page.getByLabel("Catalog configuration").inputValue(),
-  );
-  updated.freePlan.capabilities.ai.limit = 3;
-  await page.getByLabel("Catalog configuration").fill(JSON.stringify(updated));
+  await page.getByLabel("reader / ai limit (utc_month)").fill("3");
+  await page.getByLabel("Display name for reader").fill("Reader Essentials");
   await page.getByLabel("Type production to confirm").fill("production");
   await page.getByRole("button", { name: "Save catalog" }).click();
   await page.getByRole("status").filter({ hasText: "Catalog saved" }).waitFor();
   assert.equal(
     (await membership.snapshot("customer-42")).capabilities.ai.limit,
     3,
+  );
+  assert.equal(
+    (await membership.snapshot("customer-42")).displayName,
+    "Reader Essentials",
   );
   await page.setViewportSize({ width: 375, height: 812 });
   assert.equal(

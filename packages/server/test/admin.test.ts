@@ -4,6 +4,7 @@ import { createAdmin } from "../src/http/admin.js";
 import { AuthenticationError } from "../src/usecases/ports.js";
 import { D1AdminUserDirectory } from "../src/adapters/d1_admin_users.js";
 import { D1AdminSessionStore } from "../src/adapters/d1_admin_sessions.js";
+import { createD1AdminServices } from "../src/adapters/d1_admin_composition.js";
 import { adminOpenApi } from "../src/http/admin_contract.js";
 import contract from "../../../protocol/admin.openapi.json" with { type: "json" };
 import fixture from "../../../protocol/fixtures/admin-contract.json" with { type: "json" };
@@ -24,6 +25,24 @@ const input = async (
   expectedCatalogRevision: (await s.billing.catalog()).revision,
 });
 describe("manual membership", () => {
+  it("rejects a stale proposed catalog and reports the effective source", async () => {
+    const s = setup();
+    const preview = await input(s);
+    expect((await s.service.user("user")).source).toBe("default");
+    const updated = {
+      ...catalog,
+      plans: catalog.plans.map((p) => ({ ...p, displayName: "Updated name" })),
+    };
+    await s.billing.replaceCatalog(updated, 0);
+    await expect(s.service.create(preview, "operator")).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(await s.grants.list("user")).toEqual([]);
+    await s.billing.synchronize("user");
+    expect((await s.service.user("user")).source).toBe("subscription");
+    await s.service.create(await input(s), "operator");
+    expect((await s.service.user("user")).source).toBe("manual");
+  });
   // Covers: S_ADMIN_GRANTS case=happy_path
   it("temporarily overrides paid membership, including a lower plan, without changing billing state", async () => {
     const s = setup();
@@ -313,11 +332,63 @@ describe("admin HTTP and privacy", () => {
   });
 });
 describe("admin storage boundaries", () => {
+  // Covers: S_ADMIN_ENVIRONMENT case=happy_path
+  it("composes real migrated environment repositories for reads, overrides and usage", async () => {
+    const { db } = sqlite();
+    const make = (env: "production" | "sandbox") =>
+      createD1AdminServices(
+        db,
+        env,
+        {
+          subscriber: async () => ({
+            observedAt: "2026-09-07T00:00:00.000Z",
+            managementUrl: null,
+            entitlements: [],
+          }),
+        },
+        catalog,
+        () => new Date("2026-09-07T00:00:00.000Z"),
+      );
+    const p = make("production"),
+      s = make("sandbox");
+    const pId = await p.billing.repository.identity("user"),
+      sId = await s.billing.repository.identity("user");
+    expect(pId).not.toBe(sId);
+    const before = (await p.admin.user(pId)).membership;
+    await p.admin.create(
+      {
+        id,
+        ownerSub: "user",
+        planId: "team",
+        endsAt: "2026-09-10T00:00:00.000Z",
+        reason: "Cross environment fixture",
+        expectedMembership: before,
+        expectedCatalogRevision: 0,
+      },
+      "operator",
+    );
+    expect(
+      (await make("production").admin.user("user")).membership.planId,
+    ).toBe("team");
+    expect((await s.admin.user(sId)).membership.planId).toBe("starter");
+    await expect(s.admin.user(pId)).rejects.toMatchObject({ status: 404 });
+    await s.membership.claimUnique("user", "ai", "private-item");
+    expect(
+      (await make("production").membership.snapshot("user")).capabilities.ai
+        ?.used,
+    ).toBe(0);
+    expect(
+      (await make("sandbox").membership.snapshot("user")).capabilities.ai?.used,
+    ).toBe(1);
+    await p.admin.revoke(id, "Finished", "operator");
+    expect((await make("production").membership.snapshot("user")).planId).toBe(
+      "starter",
+    );
+  });
   it("queries only operational identity fields under the agreed environment schema", async () => {
     const { db, sqlite: sql } = sqlite();
-    // Contract fixture for the separately owned 0004 migration; no production compatibility fallback.
     sql.exec(
-      "ALTER TABLE appbase_billing_accounts ADD COLUMN environment TEXT NOT NULL DEFAULT 'production'; ALTER TABLE appbase_membership_grants ADD COLUMN environment TEXT NOT NULL DEFAULT 'production'; INSERT INTO appbase_billing_accounts(owner_sub,app_user_id) VALUES ('user','payment-user');",
+      "INSERT INTO appbase_billing_accounts(owner_sub,app_user_id) VALUES ('user','payment-user');",
     );
     const directory = new D1AdminUserDirectory(db, "production");
     expect(await directory.find("payment-user")).toEqual({

@@ -16,3 +16,11 @@
 ## 0.1.2
 
 - Emit portable relative ESM specifiers.
+
+## Unreleased — optional administration
+
+- Add per-product admin UI and API for user membership, manual overrides,
+  revocation audit and existing catalog configuration.
+- Add optional confidential OIDC BFF with short-lived server sessions.
+- Bind admin grants and composition to the billing environment; preserve sync
+  privacy and payment records. Requires 0005 after 0004.

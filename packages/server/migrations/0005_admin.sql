@@ -27,3 +27,8 @@ CREATE TABLE appbase_admin_sessions (
   expires_at INTEGER NOT NULL
 );
 CREATE INDEX appbase_admin_sessions_expiry ON appbase_admin_sessions(expires_at);
+
+CREATE TABLE appbase_admin_login_attempts (
+  id_hash TEXT PRIMARY KEY,
+  expires_at INTEGER NOT NULL
+);

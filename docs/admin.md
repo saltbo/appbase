@@ -27,10 +27,13 @@ The stack remains TypeScript, Hono and D1. The UI is a small same-origin HTML/JS
 module with native controls; no separate application framework or build pipeline.
 The product supplies its name, catalog, authorization policy and OIDC registration.
 UI uses remote displayName where present, otherwise the stable plan id.
+The UI edits existing plans, limits and existing entitlement mappings. Adding a
+new tier or entitlement mapping remains available through the existing catalog
+API; sale/retirement and store prices remain provider-owned.
 
 ## Manual grant semantics
 
-Apply `0005_admin.sql` after the billing environment migration. Manual grants
+Apply `0005_admin.sql` after `0004_billing_environments.sql` from [PR #6](https://github.com/saltbo/appbase/pull/6). Manual grants
 live in `appbase_admin_grants`, not the existing grant or RevenueCat tables.
 They record environment, UUID, subject, plan, start/end, reason, operator,
 creation time, previous plan and reviewed catalog revision. Revocation adds
@@ -98,6 +101,7 @@ client_secret_post. Store its client secret and a random 32-byte login-cookie
 encryption key as Worker secrets. No online registration is performed by this PR.
 Request only the product's registered administration scopes and audience.
 
+Login attempts are consumed atomically before code exchange, preventing callback replay.
 The encrypted login attempt is bound to the mount, browser cookie, nonce and
 state for five minutes. Successful login rotates the opaque session. Only the
 session id hash, normalized principal/scopes and expiry live in D1. Sessions
@@ -105,8 +109,9 @@ last at most five minutes and never outlive the token response/ID token expiry;
 there is no refresh token. Permission changes take effect on reauthentication
 or expiry within that window. Logout deletes the server session and cookie; it
 does not log the operator out of Realmroot or sibling applications. Expired
-session rows can be removed by the host's retention job with
-`DELETE FROM appbase_admin_sessions WHERE expires_at <= ?` (epoch milliseconds).
+session and login-attempt rows can be removed by the host's retention job with
+`DELETE FROM appbase_admin_sessions WHERE expires_at <= ?` and the same condition
+on `appbase_admin_login_attempts` (epoch milliseconds).
 
 All admin operations require an explicit injected authorization policy.
 Every read requires `admin:read`; grants additionally require
@@ -122,6 +127,54 @@ The cookie namespace is host-wide, appropriate to one product per host. Use
 the same operator issuer/audience for both environment mounts and distinguish
 environment authority in the injected policy. The product controls registry
 configuration and actual permission grants; this library cannot grant them.
+
+## Host composition
+
+Use `createD1AdminServices` once per request with the selected environment. It
+constructs all billing, usage, legacy and manual repositories together. Route
+the returned `membership` service into customer membership reads and every
+quota-enforced operation. Existing specialized hosts may instead compose the
+documented repository chain themselves.
+
+```ts
+import { Hono } from "hono";
+import {
+  createAdmin, createAdminOidc, createD1AdminServices, D1AdminSessionStore,
+} from "@saltbo/appbase-server/admin";
+import { OidcAuthVerifier } from "@saltbo/appbase-server/cloudflare";
+
+// env, baseline and provider come from the product's composition root.
+const worker = new Hono();
+const operatorPolicy = (principal, capability, environment) =>
+  principal.scopes.includes(`operations:${environment}:${capability}`);
+for (const environment of ["production", "sandbox"] as const) {
+  const path = environment === "production" ? "/admin" : "/sandbox/admin";
+  const url = env.PUBLIC_ORIGIN + path;
+  const oidc = createAdminOidc({
+    issuer: env.OIDC_ISSUER, audience: env.ADMIN_AUDIENCE,
+    clientId: env.ADMIN_CLIENT_ID, clientSecret: env.ADMIN_CLIENT_SECRET,
+    url, cookieKey: decodeCookieKey(env.ADMIN_COOKIE_KEY),
+    scopes: productRegisteredOperatorScopes,
+    sessions: new D1AdminSessionStore(env.DB),
+    verifier: new OidcAuthVerifier(env.OIDC_ISSUER, env.ADMIN_AUDIENCE),
+  });
+  worker.route(path + "/session", oidc.app);
+  worker.route(path, createAdmin({
+    environment, url, productName: env.PRODUCT_NAME,
+    environments: [
+      { name: "Production", url: env.PUBLIC_ORIGIN + "/admin/" },
+      { name: "Sandbox", url: env.PUBLIC_ORIGIN + "/sandbox/admin/" },
+    ],
+    authenticate: oidc.authenticate, authorize: operatorPolicy,
+    service: () => createD1AdminServices(env.DB, environment, provider(environment), baseline).admin,
+  }));
+}
+```
+
+The scope names above illustrate a product policy, not pre-registered Realmroot
+permissions. Register and map the actual scopes before enabling the module.
+`decodeCookieKey` is the host's secret decoder and must produce 32 bytes. Do not
+put cookie or confidential client secrets in public configuration.
 
 ## Verification
 

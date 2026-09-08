@@ -9,6 +9,8 @@ import {
 } from "../usecases/ports.js";
 
 export interface AdminSessionStore {
+  startAttempt(idHash: string, expiresAt: number): Promise<void>;
+  consumeAttempt(idHash: string, now: number): Promise<boolean>;
   put(idHash: string, principal: Principal, expiresAt: number): Promise<void>;
   get(idHash: string, now: number): Promise<Principal | null>;
   delete(idHash: string): Promise<void>;
@@ -89,6 +91,10 @@ export function createAdminOidc(options: AdminOidcOptions) {
       .setIssuedAt()
       .setExpirationTime("5m")
       .encrypt(options.cookieKey);
+    await options.sessions.startAttempt(
+      await adminSessionHash(state),
+      Date.now() + 300_000,
+    );
     setCookie(c, attemptCookie, attempt, { ...cookieOptions, maxAge: 300 });
     const authorization = new URL(as.authorization_endpoint!);
     for (const [key, value] of Object.entries({
@@ -125,6 +131,15 @@ export function createAdminOidc(options: AdminOidcOptions) {
       new URL(c.req.url),
       payload.state,
     );
+    if (
+      !(await options.sessions.consumeAttempt(
+        await adminSessionHash(payload.state),
+        Date.now(),
+      ))
+    )
+      throw new AuthenticationError(
+        "The login attempt expired or was already used.",
+      );
     const response = await oauth.authorizationCodeGrantRequest(
       as,
       client,

@@ -516,6 +516,11 @@ export const adminOpenApi = {
               $ref: "#/components/schemas/Capability",
             },
           },
+          displayName: {
+            type: "string",
+            minLength: 1,
+            maxLength: 100,
+          },
         },
         required: ["id", "capabilities"],
         additionalProperties: false,
@@ -544,27 +549,6 @@ export const adminOpenApi = {
           },
         },
         required: ["freePlan", "plans", "entitlementPlans", "honorGracePeriod"],
-        additionalProperties: false,
-      },
-      State: {
-        type: "object",
-        properties: {
-          observedAt: {
-            type: "string",
-            format: "date-time",
-          },
-          managementUrl: {
-            type: ["string", "null"],
-            format: "uri",
-          },
-          entitlements: {
-            type: "array",
-            items: {
-              $ref: "#/components/schemas/Entitlement",
-            },
-          },
-        },
-        required: ["observedAt", "managementUrl", "entitlements"],
         additionalProperties: false,
       },
       Entitlement: {
@@ -662,8 +646,20 @@ export const adminOpenApi = {
               additionalProperties: false,
             },
           },
+          displayName: {
+            type: "string",
+          },
+          isPaid: {
+            type: "boolean",
+          },
         },
-        required: ["planId", "grantEndsAt", "capabilities"],
+        required: [
+          "planId",
+          "grantEndsAt",
+          "capabilities",
+          "displayName",
+          "isPaid",
+        ],
         additionalProperties: false,
       },
       Revocation: {
@@ -881,8 +877,18 @@ export const adminOpenApi = {
               },
             ],
           },
+          source: {
+            type: "string",
+            enum: ["manual", "subscription", "legacy", "default"],
+          },
         },
-        required: ["ownerSub", "membership", "manualGrant", "subscription"],
+        required: [
+          "ownerSub",
+          "membership",
+          "manualGrant",
+          "subscription",
+          "source",
+        ],
         additionalProperties: false,
       },
       Context: {

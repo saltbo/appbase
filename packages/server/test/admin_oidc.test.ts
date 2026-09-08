@@ -142,6 +142,7 @@ describe("admin OIDC BFF", () => {
         )
       ).status,
     ).toBe(401);
+    expect(f.getExchanges()).toBe(1);
     expect(
       (
         await f.app.request("https://product.test/admin/session/logout", {

@@ -14,3 +14,4 @@ export { D1AdminRepository } from "./adapters/d1_admin_repository.js";
 export { D1AdminUserDirectory } from "./adapters/d1_admin_users.js";
 export { D1AdminSessionStore } from "./adapters/d1_admin_sessions.js";
 export { adminOpenApi } from "./http/admin_contract.js";
+export { createD1AdminServices } from "./adapters/d1_admin_composition.js";
