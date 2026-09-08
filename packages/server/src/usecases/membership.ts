@@ -6,11 +6,16 @@ import {
 } from "../domain/membership.js";
 import type { MembershipRepository } from "./membership_ports.js";
 
-export type MembershipConfig = {
+export type MembershipPlans = {
   freePlan: MembershipPlan;
   plans: readonly MembershipPlan[];
+};
+export type MembershipConfig = (
+  | MembershipPlans
+  | { loadCatalog: () => Promise<MembershipPlans> }
+) & {
   now?: () => Date;
-  loadCatalog?: () => Promise<Pick<MembershipConfig, "freePlan" | "plans">>;
+  loadCatalog?: () => Promise<MembershipPlans>;
 };
 
 export class MembershipService {
@@ -115,13 +120,12 @@ export class MembershipService {
   }
 
   private currentConfig() {
-    return this.config.loadCatalog?.() ?? Promise.resolve(this.config);
+    return this.config.loadCatalog
+      ? this.config.loadCatalog()
+      : Promise.resolve(this.config as MembershipPlans);
   }
 
-  private requirePlan(
-    planId: string,
-    config: Pick<MembershipConfig, "freePlan" | "plans">,
-  ): MembershipPlan {
+  private requirePlan(planId: string, config: MembershipPlans): MembershipPlan {
     const plan = [config.freePlan, ...config.plans].find(
       (p) => p.id === planId,
     );

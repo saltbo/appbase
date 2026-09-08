@@ -41,7 +41,7 @@ const plan = z
 export const catalogSchema = z
   .object({
     freePlan: plan,
-    plans: z.array(plan).min(1).max(30),
+    plans: z.array(plan).max(30),
     entitlementPlans: z.record(id, id),
     honorGracePeriod: z.boolean(),
   })
@@ -82,13 +82,15 @@ export function createBilling<B extends object>(
           : error instanceof z.ZodError || error instanceof SyntaxError
             ? 422
             : error instanceof BillingError
-              ? error.code === "PRECONDITION_FAILED"
-                ? 412
-                : error.code === "SYNC_SUPERSEDED"
-                  ? 409
-                  : error.code === "INVALID_CATALOG"
-                    ? 422
-                    : 502
+              ? error.code === "CONFIGURATION_MISSING"
+                ? 503
+                : error.code === "PRECONDITION_FAILED"
+                  ? 412
+                  : error.code === "SYNC_SUPERSEDED"
+                    ? 409
+                    : error.code === "INVALID_CATALOG"
+                      ? 422
+                      : 502
               : 500;
     if (status === 401) c.header("WWW-Authenticate", "Bearer");
     return c.json(
@@ -155,6 +157,7 @@ export function createBilling<B extends object>(
   app.get("/account", async (c) => {
     const p = await principal(c.req.raw, c.env, "billing:read");
     const service = options.service(c.env);
+    await service.catalog();
     return c.json({
       appUserId: await service.repository.identity(p.sub),
       sdkKeys: options.sdkKeys(c.env),

@@ -51,7 +51,7 @@ try {
    const auth=r.headers().authorization;
    if(!auth) return route.fulfill({status:401,contentType:'application/json',body:'{}'});
    assert.equal((await jwtVerify(auth.replace(/^Bearer /,''),keys.publicKey,{issuer,audience:origin})).payload.sub,'operator');
-   if(url.pathname.endsWith('/context')) return json({environment:url.pathname.startsWith('/sandbox')?'sandbox':'production',environments,canConfigure:false,operator:'operator'});
+   if(url.pathname.endsWith('/context')) return json({environment:url.pathname.startsWith('/sandbox')?'sandbox':'production',environments,catalogInitialized:true,benefitSchema:{},canConfigure:false,operator:'operator'});
    if(url.pathname.endsWith('/customers')) return json({items:[],pagination:{page:1,pageSize:20,totalItems:0,totalPages:0}});
    throw new Error('Unexpected API path');
   }

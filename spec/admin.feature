@@ -110,11 +110,11 @@ Feature: Optional product administration
   Scenario: Distinguish cloud quotas from local unlock policy
     Given the application defines the execution boundary and units of its benefits
     When an operator inspects or edits a plan
-    Then cloud quotas and local unlock policies appear in separate groups
-    And local usage is not presented as a server-measured zero
+    Then benefits appear in one list without execution-location classification
+    And usage reports stored counters without claiming where enforcement occurs
     And unlimited cloud benefits are shown as not metered
     And remote changes to existing local policy do not require a client release
-    And the administrator cannot reclassify enforcement or invent an unimplemented benefit
+    And the administrator cannot invent an undeclared benefit
 
   # Acceptance: S_ADMIN_PLAN_CREATE status=implemented layers=browser
   Scenario: Configure a new plan for existing capabilities without a native release
@@ -131,3 +131,19 @@ Feature: Optional product administration
     Then the plan and binding are saved together
     And an entitlement already bound to another plan is rejected without creating the plan
     And other environments remain unchanged
+
+  # Acceptance: S_ADMIN_CATALOG_SETUP status=implemented layers=http,browser
+  Scenario: Initialize plans from an application-owned benefit schema
+    Given an application declares benefit structure without initial plans
+    And the selected environment has no catalog
+    Then administration offers catalog setup and membership access fails explicitly
+    When an authorized operator creates the default plan with explicit benefit values
+    Then the catalog is persisted with optimistic concurrency
+    And benefit fields have no execution-location classification
+
+  # Acceptance: S_ADMIN_PLAN_DELETE status=implemented layers=http,browser
+  Scenario: Delete only an unreferenced non-default plan
+    Given an operator edits the current catalog
+    Then an unbound plan without historical grants can be deleted
+    And the default plan and referenced plans cannot be deleted
+    And concurrent writes cannot bypass the reference checks

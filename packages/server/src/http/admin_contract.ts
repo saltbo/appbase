@@ -2,7 +2,7 @@ export const adminOpenApi = {
   openapi: "3.1.0",
   info: {
     title: "AppBase Optional Administration",
-    version: "0.3.0",
+    version: "0.4.0",
     license: {
       name: "Apache-2.0",
       identifier: "Apache-2.0",
@@ -136,7 +136,14 @@ export const adminOpenApi = {
             content: {
               "application/json": {
                 schema: {
-                  $ref: "#/components/schemas/Catalog",
+                  anyOf: [
+                    {
+                      $ref: "#/components/schemas/Catalog",
+                    },
+                    {
+                      type: "null",
+                    },
+                  ],
                 },
               },
             },
@@ -459,7 +466,6 @@ export const adminOpenApi = {
           },
           plans: {
             type: "array",
-            minItems: 1,
             items: {
               $ref: "#/components/schemas/Plan",
             },
@@ -563,8 +569,7 @@ export const adminOpenApi = {
                 used: {
                   type: ["integer", "null"],
                   minimum: 0,
-                  description:
-                    "Cloud-measured usage, or null for client-enforced benefits.",
+                  description: "Recorded usage, or null when unavailable.",
                 },
                 periodKey: {
                   type: "string",
@@ -717,6 +722,41 @@ export const adminOpenApi = {
           canInspectEvents: {
             type: "boolean",
           },
+          catalogInitialized: {
+            type: "boolean",
+          },
+          benefitSchema: {
+            type: "object",
+            additionalProperties: {
+              type: "object",
+              properties: {
+                displayName: {
+                  type: "string",
+                },
+                description: {
+                  type: "string",
+                },
+                unit: {
+                  type: "string",
+                },
+                type: {
+                  type: "string",
+                  enum: ["quota"],
+                },
+                period: {
+                  type: "string",
+                  enum: ["lifetime", "utc_month"],
+                },
+              },
+              required: [
+                "type",
+                "period",
+                "displayName",
+                "description",
+                "unit",
+              ],
+            },
+          },
         },
         required: [
           "environment",
@@ -727,6 +767,8 @@ export const adminOpenApi = {
           "benefits",
           "paymentProvider",
           "canInspectEvents",
+          "catalogInitialized",
+          "benefitSchema",
         ],
         additionalProperties: false,
       },
@@ -809,14 +851,11 @@ export const adminOpenApi = {
           description: {
             type: "string",
           },
-          enforcement: {
-            enum: ["cloud", "client"],
-          },
           unit: {
             type: "string",
           },
         },
-        required: ["displayName", "description", "enforcement", "unit"],
+        required: ["displayName", "description", "unit"],
         additionalProperties: false,
       },
       PaymentConfiguration: {

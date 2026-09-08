@@ -1,3 +1,28 @@
+# Administration
+
+New hosts supply a `BillingSchema`, not initial plan data. Each capability declares
+`type: "quota"`, display name, description, unit and accounting period. Quota values
+are nonnegative integers or unlimited; this release does not add boolean or enum
+benefit encodings to the native membership protocol. There is no execution-location
+field. Consumers decide where to use or enforce a returned value.
+
+`createD1AdminServices(db, environment, provider, schema)` supplies schema metadata
+to the admin UI. An empty environment shows setup. The operator supplies the default
+plan identity and explicit limits; saving atomically persists revision 1. Runtime
+membership and billing access fail with CONFIGURATION_MISSING until configured.
+The default plan can be the only plan. Additional plans, benefit values, bindings
+and priority are administered without deployment.
+
+Deleting an unbound non-default plan uses the catalog revision and a database-time
+historical-grant reference check. Existing entitlement mappings must be retained
+or reassigned; referenced/default plans cannot be deleted. Deleting store products
+or canceling subscriptions remains provider-owned.
+
+The legacy BillingCatalog constructor remains compatible with existing released
+hosts. New integrations use BillingSchema. Migrating an existing host must persist
+its currently effective policies before switching to schema-only configuration;
+never overwrite an environment that already has a stored catalog.
+
 # Optional product administration
 
 Each product may mount the `@saltbo/appbase-server/admin` module in its own

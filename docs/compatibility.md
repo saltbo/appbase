@@ -97,3 +97,13 @@ Do not roll back only the Worker after changing the client's registration type.
 Existing payment identities, entitlements, usage and catalog rows are untouched.
 New plan identities and mappings persist and remain valid with earlier catalog
 readers; never remove customer history merely to undo an admin UI release.
+
+## Schema-owned administration
+
+Admin OpenAPI 0.4 exposes benefitSchema and catalogInitialized; GET catalog is
+null with revision 0 before setup. The native membership wire shape is unchanged.
+The execution-location field is removed from admin benefit metadata. Schema-mode
+validation allows deleting unreferenced non-default plans while preserving existing
+entitlement IDs and database-time historical grant references. A default-only
+catalog is valid. Existing BillingCatalog constructors retain legacy behavior;
+new hosts provide only BillingSchema and initialize through administration.

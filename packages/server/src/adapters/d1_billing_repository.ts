@@ -1,3 +1,4 @@
+import { BillingError } from "../domain/billing.js";
 import type {
   BillingEnvironment,
   BillingCatalog,
@@ -39,10 +40,26 @@ export class D1BillingRepository implements BillingRepository {
             .run()
         : await this.db
             .prepare(
-              "UPDATE appbase_billing_catalog SET revision = revision + 1, catalog_json = ? WHERE environment = ? AND id = 1 AND revision = ?",
+              "UPDATE appbase_billing_catalog SET revision = revision + 1, catalog_json = ? WHERE environment = ? AND id = 1 AND revision = ? AND NOT EXISTS (SELECT 1 FROM appbase_membership_grants g WHERE g.environment = appbase_billing_catalog.environment AND g.plan_id NOT IN (SELECT value FROM json_each(?)))",
             )
-            .bind(JSON.stringify(catalog), this.environment, expectedRevision)
+            .bind(
+              JSON.stringify(catalog),
+              this.environment,
+              expectedRevision,
+              JSON.stringify([
+                catalog.freePlan.id,
+                ...catalog.plans.map((p) => p.id),
+              ]),
+            )
             .run();
+    if (result.meta.changes === 0 && expectedRevision !== 0) {
+      const current = await this.catalog();
+      if (current?.revision === expectedRevision)
+        throw new BillingError(
+          "INVALID_CATALOG",
+          "A plan referenced by historical membership grants cannot be deleted.",
+        );
+    }
     return result.meta.changes > 0;
   }
   async identity(ownerSub: string): Promise<string> {

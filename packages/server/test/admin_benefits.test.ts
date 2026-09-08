@@ -16,17 +16,15 @@ describe("app-owned benefit semantics", () => {
     ai: {
       displayName: "AI explanations",
       description: "Cloud requests",
-      enforcement: "cloud",
       unit: "requests",
     },
     sources: {
       displayName: "Sources",
       description: "Device source count",
-      enforcement: "client",
       unit: "sources",
     },
   };
-  it("returns unknown device usage and keeps local limits remotely configurable", async () => {
+  it("returns recorded usage without execution-location classification", async () => {
     const db = sqlite().db;
     const services = createD1AdminServices(
       db,
@@ -56,7 +54,7 @@ describe("app-owned benefit semantics", () => {
       membership: { capabilities: Record<string, { used: number | null }> };
     };
     expect(user.membership.capabilities.ai!.used).toBe(1);
-    expect(user.membership.capabilities.sources!.used).toBeNull();
+    expect(user.membership.capabilities.sources!.used).toBe(0);
     const updated = structuredClone(baseline);
     updated.freePlan.capabilities.sources!.limit = 4;
     await services.billing.replaceCatalog(updated, 0);
@@ -75,7 +73,7 @@ describe("app-owned benefit semantics", () => {
     expect(
       (await fresh.membership.snapshot("user")).capabilities.sources!.limit,
     ).toBe(4);
-    expect(fresh.admin.benefits.sources!.enforcement).toBe("client");
+    expect(fresh.admin.benefits.sources).not.toHaveProperty("enforcement");
     const invented = structuredClone(updated);
     invented.freePlan.capabilities = {
       ...invented.freePlan.capabilities,
@@ -85,7 +83,7 @@ describe("app-owned benefit semantics", () => {
       "Capability names",
     );
   });
-  it("rejects incomplete execution metadata rather than guessing its boundary", () => {
+  it("rejects incomplete benefit metadata", () => {
     expect(() =>
       createD1AdminServices(
         sqlite().db,
