@@ -125,6 +125,8 @@ try {
   await page.getByRole("heading", {name:"Customer details"}).waitFor();
   assert.equal(await page.getByRole("button",{name:"Grant membership"}).count(),0);
   await page.getByRole("button", {name:"Plans & quotas",exact:true}).click();
+  await page.getByLabel("reader / ai limit (utc_month)").waitFor();
+  assert.equal(await page.getByRole("status").textContent(), "");
   await page.getByLabel("reader / ai limit (utc_month)").fill("3");
   await page.getByLabel("Display name for reader").fill("Reader Essentials");
   await page.getByLabel("Type production to confirm").fill("production");
