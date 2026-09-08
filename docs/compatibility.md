@@ -47,21 +47,20 @@ Catalog administration can add paid plan identifiers using the existing free-pla
 
 The payment environment pilot requires migration 0004 and coordinated server rollout. Defaults retain production paths and old membership fields. The billing Dart client now preserves URL prefixes; no sync protocol or cursor version changes. See docs/billing.md for identity, webhook and rollout constraints.
 
-## Optional administration (unreleased)
+## Administration 0.4.0
 
-The admin subpath export adds independent HTTP/UI/OIDC routes and migration
-0005. It depends on the billing environment contract introduced by PR #6.
-Existing sync clients, cursors and membership representations are unchanged.
+Server 0.4.0 removes the 0.3.0 manual-grant API, repository exports and preview
+revision fields. Reload the bundled admin UI with the matching server. Apply
+0006 after migrating any local manual grants; the migration refuses nonempty
+grant storage. Existing legacy membership remains readable. Sync protocol,
+cursors and native membership snapshots are unchanged.
 
 | Consumer | Server requirement | Contract |
 | --- | --- | --- |
-| Admin UI shipped with server | Same server build, 0004 + 0005 | admin.openapi.json |
-| Existing mobile/sync clients | Admin module optional | Existing contracts unchanged |
+| Bundled administration | 0.4.0, migrations through 0006 | Read membership, configure catalog |
+| Existing native billing/sync | 0.4.0 | Existing account/membership contract |
+| Billing snapshot consumers | 0.4.0 | Promotional expiresAt may be null |
 
-Manual grants affect clients only when the host adopts the composed membership
-repository for reads and quota enforcement. See [administration](admin.md).
-
-The unreleased admin contract requires `expectedRevision` from the user preview
-on grant creation. Older review-build clients must reload with the matched UI.
-Migration 0005 now includes database revision triggers and retention indexes;
-no previously reviewed 0005 draft has been deployed by this task.
+RevenueCat owns complimentary access. Catalog concurrency still uses a strong
+If-Match token; the UI obtains its numeric revision from AppBase-Catalog-Revision
+to tolerate proxy weakening of response ETags.

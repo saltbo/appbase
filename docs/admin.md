@@ -18,10 +18,9 @@ routes, UI, session cookies, or administration dependency in their client.
 
 AppBase does not own an email/name directory. The first release therefore uses
 exact subjects or opaque payment identities, rather than pretending to search
-Realmroot users by email. Unknown users are rejected, not provisioned by a grant.
+Realmroot users by email. Lookup never creates users.
 Private collections, WebDAV credentials, tokens, encryption keys, payment
-management URLs and arbitrary SQL are never exposed. Grant reasons are operator
-text; do not include secrets or unnecessary personal data.
+management URLs and arbitrary SQL are never exposed.
 
 The stack remains TypeScript, Hono and D1. The UI is a small same-origin HTML/JS
 module with native controls; no separate application framework or build pipeline.
@@ -31,65 +30,23 @@ The UI edits existing plans, limits and existing entitlement mappings. Adding a
 new tier or entitlement mapping remains available through the existing catalog
 API; sale/retirement and store prices remain provider-owned.
 
-## Manual grant semantics
+## Complimentary access in RevenueCat
 
-Apply `0005_admin.sql` after `0004_billing_environments.sql` from [PR #6](https://github.com/saltbo/appbase/pull/6). Manual grants
-live in `appbase_admin_grants`, not the existing grant or RevenueCat tables.
-They record environment, UUID, subject, plan, start/end, reason, operator,
-creation time, previous plan and reviewed catalog revision. Revocation adds
-operator, reason and time through a conditional update. Neither operation
-deletes history or mutates a subscription, transaction or provider event.
+Open the customer in RevenueCat using the payment identity displayed here, then
+grant or revoke its entitlement there. RevenueCat owns its expiry and history;
+AppBase synchronizes the provider snapshot and maps entitlement IDs to product
+plans. Promotions do not cancel store subscriptions and do not auto-renew.
 
-Compose repositories in this order (outermost first):
-
-```
-AdminMembershipRepository
-  BillingMembershipRepository
-    D1MembershipRepository
-```
-
-An active manual grant **overrides** the entire underlying plan, even if it
-reduces paid benefits. It is not an additive allowance. The confirmation page
-shows the current membership and proposed limits and requires the operator to
-type the environment. The server checks the supplied membership snapshot and
-catalog revision and the `expectedRevision` returned by the user preview. The
-INSERT atomically checks the per-user version, catalog epoch, saved catalog
-revision and a database-clock deadline. Database triggers advance versions for
-manual/legacy grants, subscription/identity changes and usage. Catalog changes
-advance a separate environment epoch, including deletion/recreation. Sync owner
-creation/removal or reassignment invalidates directory previews, but ordinary
-payload updates do not. A competing write invalidates the preview even if it
-leaves the effective plan unchanged. Conflicts return 409 without audit rows.
-
-Preview reads bracket dependent queries with version reads to reject torn
-results; the final conditional INSERT is the concurrency boundary. Preview
-validity ends at the earliest future grant/subscription transition, UTC month
-boundary, or five minutes. The proposed expiry is also checked at the INSERT.
-Deadlines use Unix seconds, rounding down conservatively. A time boundary can
-therefore require refresh up to one second early. Successful INSERT triggers
-advance the user version in the same transaction, so two operators using the
-same preview cannot both commit. Later writes must obtain a new preview.
-
-These guarantees require the D1 composition and all of its sources to share this
-database. Custom repositories/directories must implement equivalent revision
-coverage and an atomic conditional create; a mutable external identity or
-membership source cannot be bolted on without a consistency contract. A canonical catalog fingerprint also invalidates previews across bootstrap
-configuration changes during a rollout, even without a stored catalog row.
-Do not delete revision tombstones while issued previews could still exist.
-
-Among active manual grants, latest created_at wins, then greatest id for a
-stable tie break. Starts are inclusive, ends exclusive. Expired/revoked grants
-are ignored; the next active manual grant applies, then the original billing
-and membership chain, then the product's default plan. Revoke every active
-override if the intention is to return immediately to subscription behavior.
-The UI refreshes after every successful write. Reusing an id or revoking twice
-returns 409 so uncertain outcomes can be inspected without rewriting audit.
-History uses a bounded 50-row page and stable grant cursor.
+AppBase has no manual grant API, override repository, or grant-writing scope.
+Apply 0006_revenuecat_grants.sql after 0005. Retirement refuses to proceed if
+any old manual grant rows exist: preserve and explicitly migrate those first.
+Legacy membership_grants rows are retained as a compatibility source; they are
+not editable in this administration module.
 
 ## Environment and compatibility
 
 Mount production at `/admin` and sandbox at `/sandbox/admin`. Both the service
-and D1AdminRepository are constructed with one immutable environment. The
+and billing repositories are constructed with one immutable environment. The
 request body/header is only a confirmation; it never selects storage.
 Environment links must be same-origin, and authorization receives the selected
 environment on every operation. Give production and sandbox permissions
@@ -99,9 +56,10 @@ This module depends on the separately reviewed billing environment migration
 and repositories. Do not enable both environments on the old unscoped billing
 schema. `D1AdminUserDirectory` deliberately requires the real environment
 columns; there is no detection/fallback path. Sync data remains shared as the
-pilot specifies. The manual grant table is isolated regardless of the host's
-other repositories, but the host must also use the matching environment for
-subscription reads, membership queries and quota enforcement.
+pilot specifies. The host uses matching environments for provider reads, membership and quotas.
+Promotions have no store sandbox; they inherit the environment of the distinct
+server-owned payment UUID. Ordinary store transactions still require the matching
+verified sandbox flag.
 
 The optional admin API is documented by `protocol/admin.openapi.json` and
 exported as `adminOpenApi`. It does not change sync routes, cursors or existing
@@ -138,18 +96,8 @@ work stays bounded. Hosts can additionally call `D1AdminSessionStore.pruneExpire
 from their retention schedule to drain idle deployments. This is not a rate
 limit on unexpired login attempts; the host's normal ingress policy still applies.
 
-The new revision tables keep one counter per environment/user and one per
-catalog. Triggers add one upsert per insert/delete, two per update to cover owner
-or environment reassignment. Sync insert/delete perform an indexed owner
-existence probe; only the first/last row changes its directory revision. No
-payload is decoded. Membership/user/catalog write contention is serialized by
-SQLite, with unrelated users and environments retaining independent versions.
-Apply the complete unreleased 0005 migration with its triggers before enabling
-this admin build; an earlier review copy of 0005 is not deployment-compatible.
-
 All admin operations require an explicit injected authorization policy.
-Every read requires `admin:read`; grants additionally require
-`admin:grants:write`; catalog writes additionally require `billing:configure`.
+Every read requires `admin:read`; catalog writes additionally require `billing:configure`.
 These are capability names mapped by the host to its actual granted scopes.
 Ordinary mobile `appbase:read`/`appbase:write` authority must not map to them.
 Hidden buttons never supply authorization. Cookie writes require an exact Origin
@@ -165,7 +113,7 @@ configuration and actual permission grants; this library cannot grant them.
 ## Host composition
 
 Use `createD1AdminServices` once per request with the selected environment. It
-constructs all billing, usage, legacy and manual repositories together. Route
+constructs all billing, usage and legacy repositories together. Route
 the returned `membership` service into customer membership reads and every
 quota-enforced operation. Existing specialized hosts may instead compose the
 documented repository chain themselves.
@@ -222,8 +170,8 @@ Install the matching Playwright Chromium once or set `APPBASE_CHROME_PATH` to an
 existing Chrome executable. `APPBASE_ADMIN_SCREENSHOT` optionally saves a local
 fixture screenshot. The script intercepts only its fixture origin and sends
 requests to the actual Hono router and SQLite adapters; no live memberships or
-payment services are contacted. It covers empty/error states, preview, wrong
-environment rejection, grant/revoke refresh, quota editing and narrow layout.
+payment services are contacted. It covers empty/error states, provider-only membership, quota editing with
+proxy-weakened ETags and narrow layout.
 
 Before deployment, the host must separately accept its actual Realmroot login,
 permission grants, environment composition and Worker/D1 runtime. Publishing,
@@ -235,8 +183,5 @@ registration: `client_secret_basic` sends HTTP Basic authentication;
 Zigloo explicitly uses `client_secret_basic`. The adapter does not guess or
 retry with another authentication method after an exchange failure.
 
-D1 runtime compatibility: preview boundaries use three compound SELECT terms
-(the platform allows at most five). Successful single-row conditional writes
-check for a positive change count because D1 includes AFTER-trigger revision
-writes in `meta.changes`; zero still means the precondition did not match.
-This also applies to the underlying billing and membership repositories.
+D1 runtime acceptance verifies successful and rejected conditional billing writes,
+quota enforcement, and isolated provider membership with the retired tables absent.

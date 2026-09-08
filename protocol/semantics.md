@@ -100,3 +100,18 @@ Removing an in-use key version is a destructive operation and is not automated.
 Catalog administration can add paid plan identifiers using the existing free-plan capability schema. Existing plan identifiers and accounting periods must remain so stored grants and usage remain valid. Plans may carry an optional displayName; snapshots add displayName and isPaid. Missing names use the stable plan identifier for compatibility with existing catalogs. Clients should render the returned name and enforce capabilities, never classify paid access from a known plan identifier. Existing clients tolerate the additive response fields; clients that hardcode plan labels require one upgrade before remote tiers display correctly. Retire sale offerings rather than deleting historical plan definitions or entitlement mappings.
 
 The payment environment pilot requires migration 0004 and coordinated server rollout. Defaults retain production paths and old membership fields. The billing Dart client now preserves URL prefixes; no sync protocol or cursor version changes. See docs/billing.md for identity, webhook and rollout constraints.
+
+## Complimentary membership ownership
+
+RevenueCat owns complimentary entitlement grants, expiration, and revocation.
+Administration no longer exposes manual-grants routes or local override state.
+Operators use the persisted payment identity in RevenueCat. Native sync and
+membership snapshots remain compatible. Billing entitlement expiresAt can be
+null only for provider promotional lifetime access. Store transactions retain
+strict environment validation; promotions follow the server-owned payment
+identity's environment because they have no store sandbox transaction.
+Admin catalog responses include AppBase-Catalog-Revision; browser writers build
+the strong If-Match value from this explicit revision, independently of proxy
+compression changing response ETags.
+Existing legacy membership grants remain until explicitly migrated, preserving
+previously issued membership.

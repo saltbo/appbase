@@ -25,8 +25,7 @@ export class D1AdminUserDirectory implements AdminUserDirectory {
     const known = await this.db
       .prepare(
         `SELECT owner_sub FROM appbase_records WHERE owner_sub=?1
-      UNION SELECT owner_sub FROM appbase_membership_grants WHERE owner_sub=?1 AND environment=?2
-      UNION SELECT owner_sub FROM appbase_admin_grants WHERE owner_sub=?1 AND environment=?2 LIMIT 1`,
+      UNION SELECT owner_sub FROM appbase_membership_grants WHERE owner_sub=?1 AND environment=?2 LIMIT 1`,
       )
       .bind(query, this.environment)
       .first<{ owner_sub: string }>();

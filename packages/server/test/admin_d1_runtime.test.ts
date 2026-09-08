@@ -40,6 +40,7 @@ beforeAll(async () => {
     "0003_billing.sql",
     "0004_billing_environments.sql",
     "0005_admin.sql",
+    "0006_revenuecat_grants.sql",
   ]) {
     const sql = readFileSync(
       new URL("../migrations/" + migration, import.meta.url),
@@ -64,7 +65,7 @@ describe("actual Workerd D1 administration", () => {
       )
       .bind(JSON.stringify(state), owner, generation)
       .run();
-    expect(applied.meta.changes).toBeGreaterThan(1);
+    expect(applied.meta.changes).toBe(1);
     expect(await billing.commitSync(owner, generation, state)).toBe(true);
     const stale = await db
       .prepare(
@@ -101,51 +102,25 @@ describe("actual Workerd D1 administration", () => {
     ).toMatchObject({ allowed: false, created: false });
   });
 
-  it("error_path permits one concurrent grant and preserves its revocation audit", async () => {
+  it("reads isolated provider membership with no manual grant service", async () => {
     const owner = crypto.randomUUID();
-    const services = () =>
-      createD1AdminServices(
-        db,
-        "sandbox",
-        { subscriber: async () => state },
-        catalog,
-      );
-    const first = services();
-    await first.billing.repository.identity(owner);
-    const preview = await first.admin.user(owner);
-    expect(preview.expectedRevision.validUntil).toBeGreaterThan(
-      Date.now() / 1000,
+    const p = createD1AdminServices(
+      db,
+      "production",
+      { subscriber: async () => state },
+      catalog,
+      () => new Date("2026-09-07T00:00:00.000Z"),
     );
-    const input = {
-      ownerSub: owner,
-      planId: "team",
-      reason: "Workerd fixture",
-      endsAt: new Date(Date.now() + 3_600_000).toISOString(),
-      expectedMembership: preview.membership,
-      expectedRevision: preview.expectedRevision,
-      expectedCatalogRevision: 0,
-    };
-    const results = await Promise.allSettled(
-      [1, 2].map(() =>
-        services().admin.create(
-          { ...input, id: crypto.randomUUID() },
-          "operator",
-        ),
-      ),
+    const s = createD1AdminServices(
+      db,
+      "sandbox",
+      { subscriber: async () => ({ ...state, entitlements: [] }) },
+      catalog,
     );
-    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    const rejected = results.find((r) => r.status === "rejected");
-    expect(rejected?.status === "rejected" && rejected.reason.status).toBe(409);
-    const [grant] = await first.admin.grants.list(owner);
-    expect((await services().membership.snapshot(owner)).planId).toBe("team");
-    expect(
-      await services().admin.revoke(grant!.id, "End fixture", "operator"),
-    ).toMatchObject({ revocation: { reason: "End fixture" } });
-    expect((await services().membership.snapshot(owner)).planId).toBe(
-      "starter",
-    );
-    await expect(
-      services().admin.revoke(grant!.id, "Again", "operator"),
-    ).rejects.toMatchObject({ status: 409 });
+    await p.billing.synchronize(owner);
+    await s.billing.synchronize(owner);
+    expect((await p.admin.user(owner)).membership.planId).toBe("studio");
+    expect((await s.admin.user(owner)).membership.planId).toBe("starter");
+    expect(p.admin).not.toHaveProperty("create");
   });
 });

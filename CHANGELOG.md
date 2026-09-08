@@ -1,3 +1,10 @@
+## 0.4.0
+
+- Use RevenueCat promotional entitlements for complimentary membership, including lifetime access and isolated payment identities.
+- Remove local manual-grant administration and overrides; preserve legacy membership until explicit migration.
+- Retire empty manual-grant storage with a nonempty-data guard.
+- Keep catalog editing functional when a proxy weakens response ETags.
+
 # Changelog
 
 ## 0.3.0 - Unreleased

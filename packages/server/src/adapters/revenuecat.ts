@@ -113,7 +113,9 @@ export class RevenueCatProvider implements BillingProvider {
       if (
         this.environment !== undefined &&
         Object.values(data.subscriber.subscriptions).some(
-          (sub) => sub.is_sandbox !== (this.environment === "sandbox"),
+          (sub) =>
+            sub.store !== "promotional" &&
+            sub.is_sandbox !== (this.environment === "sandbox"),
         )
       ) {
         throw new BillingError(
@@ -124,8 +126,8 @@ export class RevenueCatProvider implements BillingProvider {
       const entitlements = Object.entries(data.subscriber.entitlements).flatMap(
         ([id, e]) => {
           const sub = data.subscriber.subscriptions[e.product_identifier];
-          // This adapter's first contract is renewable subscriptions, not lifetime purchases.
-          if (e.expires_date === null)
+          // Only provider-issued promotions support non-expiring access.
+          if (e.expires_date === null && sub?.store !== "promotional")
             throw new BillingError(
               "INVALID_PROVIDER_RESPONSE",
               "Non-expiring purchases are not supported by this subscription adapter.",
@@ -141,11 +143,18 @@ export class RevenueCatProvider implements BillingProvider {
               id,
               productId: e.product_identifier,
               store: sub.store,
-              sandbox: sub.is_sandbox,
+              // Promotions have no store sandbox. The caller binds this customer
+              // to its persisted, environment-specific payment identity.
+              sandbox:
+                sub.store === "promotional"
+                  ? this.environment === "sandbox"
+                  : sub.is_sandbox,
               startsAt: e.purchase_date,
               expiresAt: e.expires_date,
               graceEndsAt: e.grace_period_expires_date ?? null,
-              willRenew: sub.unsubscribe_detected_at === null,
+              willRenew:
+                sub.store !== "promotional" &&
+                sub.unsubscribe_detected_at === null,
             },
           ];
         },

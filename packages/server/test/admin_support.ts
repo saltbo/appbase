@@ -4,9 +4,7 @@ import { BillingService } from "../src/usecases/billing.js";
 import { D1BillingRepository } from "../src/adapters/d1_billing_repository.js";
 import { D1MembershipRepository } from "../src/adapters/d1_membership_repository.js";
 import { BillingMembershipRepository } from "../src/usecases/billing_membership_repository.js";
-import { AdminMembershipRepository } from "../src/usecases/admin_membership_repository.js";
 import { AdminService, type AdminEnvironment } from "../src/usecases/admin.js";
-import { D1AdminRepository } from "../src/adapters/d1_admin_repository.js";
 import { MembershipService } from "../src/usecases/membership.js";
 import type { BillingCatalog, BillingState } from "../src/domain/billing.js";
 export function sqlite() {
@@ -18,6 +16,7 @@ export function sqlite() {
     "0003_billing.sql",
     "0004_billing_environments.sql",
     "0005_admin.sql",
+    "0006_revenuecat_grants.sql",
   ])
     sqlite.exec(
       readFileSync(new URL("../migrations/" + name, import.meta.url), "utf8"),
@@ -91,21 +90,20 @@ export function setup(
     { subscriber: async () => state },
     catalog,
   );
-  const grants = new D1AdminRepository(database.db, environment);
   const underlying = new BillingMembershipRepository(
     new D1MembershipRepository(database.db, environment),
     billing.repository,
     async () => (await billing.catalog()).catalog,
     environment === "sandbox",
   );
-  const repository = new AdminMembershipRepository(underlying, grants);
+  const repository = underlying;
   const membership = new MembershipService(repository, {
     ...catalog,
     loadCatalog: async () => (await billing.catalog()).catalog,
     now: () => now,
   });
   const service = new AdminService(
-    grants,
+    environment,
     { find: async (q) => (q === "user" ? { ownerSub: "user" } : null) },
     membership,
     billing,
@@ -115,7 +113,7 @@ export function setup(
   return {
     ...database,
     billing,
-    grants,
+    environment,
     underlying,
     repository,
     membership,

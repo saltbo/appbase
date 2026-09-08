@@ -340,6 +340,84 @@ function provider(body: unknown, status = 200) {
 }
 
 describe("RevenueCat boundary", () => {
+  // Covers: S_BILLING_PROMOTIONAL case=happy_path
+  it("reconciles finite and lifetime promotions in the customer's bound environment", async () => {
+    for (const environment of ["production", "sandbox"] as const) {
+      for (const expires of ["2026-10-01T00:00:00.000Z", null]) {
+        const body = payload();
+        body.subscriber.subscriptions.annual.store = "promotional";
+        body.subscriber.entitlements.premium.expires_date = expires;
+        const gateway = new RevenueCatProvider(
+          "key",
+          async () => new Response(JSON.stringify(body)),
+          environment,
+        );
+        const result = await gateway.subscriber("bound-customer");
+        expect(result.entitlements[0]).toMatchObject({
+          sandbox: environment === "sandbox",
+          willRenew: false,
+          expiresAt: expires,
+        });
+        expect(
+          billingGrant(result, catalog, now, environment === "sandbox"),
+        ).toMatchObject({ planId: "plus", endsAt: expires });
+        expect(
+          billingGrant(result, catalog, now, environment !== "sandbox"),
+        ).toBeNull();
+        if (expires !== null)
+          expect(
+            billingGrant(result, catalog, expires, environment === "sandbox"),
+          ).toBeNull();
+      }
+    }
+  });
+  // Covers: S_BILLING_PROMOTIONAL case=happy_path
+  it("removes revoked promotional access and restores a remaining store entitlement", async () => {
+    let body = payload();
+    body.subscriber.subscriptions.annual.store = "promotional";
+    const { service, repository } = setup(
+      new RevenueCatProvider(
+        "key",
+        async () => new Response(JSON.stringify(body)),
+        "production",
+      ),
+    );
+    await service.synchronize("user");
+    expect(
+      billingGrant(await repository.state("user"), catalog, now, false),
+    ).not.toBeNull();
+    body.subscriber.entitlements = {} as typeof body.subscriber.entitlements;
+    await service.synchronize("user");
+    expect(
+      billingGrant(await repository.state("user"), catalog, now, false),
+    ).toBeNull();
+    body = payload();
+    await service.synchronize("user");
+    expect((await repository.state("user"))?.entitlements[0]?.store).toBe(
+      "app_store",
+    );
+    expect(
+      billingGrant(await repository.state("user"), catalog, now, false)?.planId,
+    ).toBe("plus");
+  });
+  // Covers: S_BILLING_PROMOTIONAL case=error_path
+  it("keeps rejecting foreign store transactions alongside a promotion", async () => {
+    const body = payload();
+    const sub = body.subscriber.subscriptions.annual;
+    body.subscriber.subscriptions = {
+      ...body.subscriber.subscriptions,
+      promotion: { ...sub, store: "promotional" },
+    } as typeof body.subscriber.subscriptions;
+    const gateway = new RevenueCatProvider(
+      "key",
+      async () => new Response(JSON.stringify(body)),
+      "sandbox",
+    );
+    await expect(gateway.subscriber("bound-customer")).rejects.toMatchObject({
+      code: "INVALID_PROVIDER_RESPONSE",
+    });
+  });
+
   it("normalizes verified subscription data including cancelled renewals and refunds", async () => {
     expect(await provider(payload()).subscriber("a")).toEqual(state);
     const cancelled = payload();

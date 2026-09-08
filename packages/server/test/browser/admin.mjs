@@ -6,8 +6,6 @@ import { Hono } from "hono";
 import {
   createAdmin,
   AdminService,
-  AdminMembershipRepository,
-  D1AdminRepository,
 } from "../../dist/admin.js";
 import {
   BillingService,
@@ -28,6 +26,7 @@ for (const name of [
   "0003_billing.sql",
   "0004_billing_environments.sql",
   "0005_admin.sql",
+    "0006_revenuecat_grants.sql",
 ])
   sql.exec(
     readFileSync(new URL("../../migrations/" + name, import.meta.url), "utf8"),
@@ -62,21 +61,17 @@ const billing = new BillingService(
   },
   catalog,
 );
-const grants = new D1AdminRepository(db, "production");
 const membership = new MembershipService(
-  new AdminMembershipRepository(
     new BillingMembershipRepository(
       new D1MembershipRepository(db),
       billing.repository,
       async () => (await billing.catalog()).catalog,
       false,
     ),
-    grants,
-  ),
   { ...catalog, loadCatalog: async () => (await billing.catalog()).catalog },
 );
 const service = new AdminService(
-  grants,
+  "production",
   { find: async (q) => (q === "customer-42" ? { ownerSub: q } : null) },
   membership,
   billing,
@@ -127,7 +122,7 @@ try {
     );
     await route.fulfill({
       status: response.status,
-      headers: Object.fromEntries(response.headers),
+      headers: { ...Object.fromEntries(response.headers), ...(response.headers.has("etag") ? {etag: "W/" + response.headers.get("etag")} : {}) },
       body: Buffer.from(await response.arrayBuffer()),
     });
   });
@@ -138,50 +133,8 @@ try {
   await page.getByRole("status").filter({ hasText: "No known user" }).waitFor();
   await page.getByLabel("Subject or payment identity").fill("customer-42");
   await page.getByRole("button", { name: "Find user", exact: true }).click();
-  await page.getByText("No manual grants.", { exact: true }).waitFor();
-  await page
-    .getByRole("button", { name: "Grant membership", exact: true })
-    .click();
-  await page.getByLabel("Override plan").selectOption("studio");
-  await page
-    .getByText("This overrides all active subscription benefits", {
-      exact: false,
-    })
-    .waitFor();
-  await page.getByLabel("Expires at (UTC)").fill("2099-01-01T00:00");
-  await page.getByLabel("Reason", { exact: true }).fill("Browser acceptance");
-  await page
-    .getByLabel("Type production to confirm the override")
-    .fill("sandbox");
-  await page.getByRole("button", { name: "Confirm manual grant" }).click();
-  await page
-    .getByRole("status")
-    .filter({ hasText: "environment changed" })
-    .waitFor();
-  assert.equal(
-    await page.getByLabel("Reason", { exact: true }).inputValue(),
-    "Browser acceptance",
-  );
-  await page
-    .getByLabel("Type production to confirm the override")
-    .fill("production");
-  await page.getByRole("button", { name: "Confirm manual grant" }).click();
-  await page
-    .getByRole("status")
-    .filter({ hasText: "Manual grant created" })
-    .waitFor();
-  assert.equal((await membership.snapshot("customer-42")).planId, "studio");
-  if (process.env.APPBASE_ADMIN_SCREENSHOT)
-    await page.screenshot({
-      path: process.env.APPBASE_ADMIN_SCREENSHOT,
-      fullPage: true,
-    });
-  await page.getByRole("button", { name: "Revoke grant", exact: true }).click();
-  await page.getByLabel("Revocation reason").fill("Acceptance complete");
-  await page.getByLabel("Type production to confirm").fill("production");
-  await page.getByRole("button", { name: "Confirm revocation" }).click();
-  await page.getByRole("status").filter({ hasText: "Grant revoked" }).waitFor();
-  assert.equal((await membership.snapshot("customer-42")).planId, "reader");
+  await page.getByText("Complimentary access is managed in RevenueCat", {exact: false}).waitFor();
+  assert.equal(await page.getByRole("button", {name: "Grant membership", exact: true}).count(), 0);
   await page.getByRole("button", { name: "Back to search" }).click();
   await page.getByRole("button", { name: "Manage plans and quotas" }).click();
   await page.getByLabel("reader / ai limit (utc_month)").fill("3");
@@ -212,7 +165,7 @@ try {
     .waitFor();
   assert.deepEqual(errors, []);
   console.log(
-    "Admin browser acceptance passed: lookup, empty/error states, preview, environment confirmation, grant, revoke, catalog, narrow layout, CSP.",
+    "Admin browser acceptance passed: lookup, empty/error states, provider-owned membership, catalog with proxy-weakened ETag, narrow layout, CSP.",
   );
 } finally {
   await browser.close();

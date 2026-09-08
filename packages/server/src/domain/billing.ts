@@ -15,7 +15,7 @@ export type BillingEntitlement = {
   store: string;
   sandbox: boolean;
   startsAt: string;
-  expiresAt: string;
+  expiresAt: string | null;
   graceEndsAt: string | null;
   willRenew: boolean;
 };
@@ -62,12 +62,21 @@ export function billingGrant(
         endsAt:
           catalog.honorGracePeriod &&
           e.graceEndsAt !== null &&
+          e.expiresAt !== null &&
           e.graceEndsAt > e.expiresAt
             ? e.graceEndsAt
             : e.expiresAt,
       }))
-      .filter((g) => g.endsAt > now)
-      .sort((a, b) => b.endsAt.localeCompare(a.endsAt));
+      .filter((g) => g.endsAt === null || g.endsAt > now)
+      .sort((a, b) =>
+        a.endsAt === null
+          ? b.endsAt === null
+            ? 0
+            : -1
+          : b.endsAt === null
+            ? 1
+            : b.endsAt.localeCompare(a.endsAt),
+      );
     if (grants[0]) return grants[0];
   }
   return null;

@@ -15,10 +15,7 @@ import { BillingError } from "../domain/billing.js";
 import { catalogSchema } from "./billing.js";
 import { adminHtml, adminScript, adminStyle } from "./admin_ui.js";
 
-export type AdminCapability =
-  | "admin:read"
-  | "admin:grants:write"
-  | "billing:configure";
+export type AdminCapability = "admin:read" | "billing:configure";
 export type AdminHttpOptions<B extends object> = {
   environment: AdminEnvironment;
   productName: string;
@@ -34,51 +31,6 @@ export type AdminHttpOptions<B extends object> = {
   environments: readonly { name: string; url: string }[];
 };
 const text = z.string().trim().min(1).max(200);
-const reason = z.string().trim().min(1).max(2000);
-const snapshot = z
-  .object({
-    planId: text,
-    displayName: text,
-    isPaid: z.boolean(),
-    grantEndsAt: z.string().nullable(),
-    capabilities: z.record(
-      z.string(),
-      z
-        .object({
-          limit: z.number().nullable(),
-          period: z.enum(["utc_month", "lifetime"]),
-          used: z.number(),
-          periodKey: z.string(),
-        })
-        .strict(),
-    ),
-  })
-  .strict();
-const grantInput = z
-  .object({
-    id: z.string().uuid(),
-    ownerSub: text,
-    planId: text,
-    endsAt: z.iso.datetime().transform((v) => new Date(v).toISOString()),
-    reason,
-    expectedMembership: snapshot,
-    expectedRevision: z
-      .object({
-        user: z.number().int().nonnegative(),
-        catalog: z.number().int().nonnegative(),
-        validUntil: z.number().int().positive(),
-        catalogFingerprint: z.string().regex(/^[a-f0-9]{64}$/u),
-      })
-      .strict(),
-    expectedCatalogRevision: z
-      .number()
-      .int()
-      .nonnegative()
-      .max(Number.MAX_SAFE_INTEGER),
-    environment: z.enum(["production", "sandbox"]),
-  })
-  .strict();
-
 /** Optional mount; the host supplies verified OIDC/session authentication and explicit policy. */
 export function createAdmin<B extends object>(options: AdminHttpOptions<B>) {
   const base = new URL(options.url);
@@ -160,7 +112,7 @@ export function createAdmin<B extends object>(options: AdminHttpOptions<B>) {
   };
   const service = (env: B) => {
     const result = options.service(env);
-    if (result.grants.environment !== options.environment)
+    if (result.environment !== options.environment)
       throw new Error("Admin environment mismatch.");
     return result;
   };
@@ -187,11 +139,6 @@ export function createAdmin<B extends object>(options: AdminHttpOptions<B>) {
       productName: options.productName,
       operator: p.sub,
       environments: options.environments,
-      canGrant: await options.authorize(
-        p,
-        "admin:grants:write",
-        options.environment,
-      ),
       canConfigure: await options.authorize(
         p,
         "billing:configure",
@@ -203,55 +150,11 @@ export function createAdmin<B extends object>(options: AdminHttpOptions<B>) {
     await authorize(c.req.raw, c.env, "admin:read");
     return c.json(await service(c.env).user(text.parse(c.req.query("query"))));
   });
-  app.get("/manual-grants", async (c) => {
-    await authorize(c.req.raw, c.env, "admin:read");
-    const rows = await service(c.env).grants.list(
-      text.parse(c.req.query("ownerSub")),
-      z.string().uuid().optional().parse(c.req.query("before")),
-    );
-    return c.json({
-      items: rows.slice(0, 50),
-      next: rows.length > 50 ? rows[49]!.id : null,
-    });
-  });
-  app.post("/manual-grants", async (c) => {
-    const p = await authorize(c.req.raw, c.env, "admin:grants:write");
-    const input = grantInput.parse(await c.req.json());
-    confirmEnvironment(input.environment);
-    const result = await service(c.env).create(input, p.sub);
-    c.header(
-      "Location",
-      `${options.url.replace(/\/$/u, "")}/manual-grants/${result.id}`,
-    );
-    return c.json(result, 201);
-  });
-  app.get("/manual-grants/:id", async (c) => {
-    await authorize(c.req.raw, c.env, "admin:read");
-    const grant = await service(c.env).grants.get(
-      z.string().uuid().parse(c.req.param("id")),
-    );
-    if (!grant) throw new AdminError(404, "Manual grant not found.");
-    return c.json(grant);
-  });
-  app.put("/manual-grants/:id/revocation", async (c) => {
-    const p = await authorize(c.req.raw, c.env, "admin:grants:write");
-    const input = z
-      .object({ reason, environment: z.enum(["production", "sandbox"]) })
-      .strict()
-      .parse(await c.req.json());
-    confirmEnvironment(input.environment);
-    return c.json(
-      await service(c.env).revoke(
-        z.string().uuid().parse(c.req.param("id")),
-        input.reason,
-        p.sub,
-      ),
-    );
-  });
   app.get("/catalog", async (c) => {
     await authorize(c.req.raw, c.env, "admin:read");
     const result = await service(c.env).billing.catalog();
     c.header("ETag", `"${result.revision}"`);
+    c.header("AppBase-Catalog-Revision", String(result.revision));
     return c.json(result.catalog);
   });
   app.put("/catalog", async (c) => {
@@ -268,6 +171,7 @@ export function createAdmin<B extends object>(options: AdminHttpOptions<B>) {
       Number(match[1]),
     );
     c.header("ETag", `"${result.revision}"`);
+    c.header("AppBase-Catalog-Revision", String(result.revision));
     return c.json(result.catalog);
   });
   // Hono normalizes a mounted child root to /admin; also serve its canonical /admin/ URL.
