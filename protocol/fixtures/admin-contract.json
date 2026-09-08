@@ -1,0 +1,24 @@
+{
+  "environment": "production",
+  "createGrant": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "ownerSub": "user",
+    "planId": "team",
+    "endsAt": "2026-09-10T00:00:00.000Z",
+    "reason": "Support case 42",
+    "environment": "production",
+    "expectedCatalogRevision": 0,
+    "expectedMembership": {
+      "planId": "starter",
+      "grantEndsAt": null,
+      "capabilities": {
+        "ai": {
+          "limit": 2,
+          "period": "utc_month",
+          "used": 0,
+          "periodKey": "2026-09"
+        }
+      }
+    }
+  }
+}
