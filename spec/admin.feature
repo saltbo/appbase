@@ -110,6 +110,7 @@ Feature: Optional product administration
     When an operator inspects or edits a plan
     Then cloud quotas and local unlock policies appear in separate groups
     And local usage is not presented as a server-measured zero
+    And unlimited cloud benefits are shown as not metered
     And remote changes to existing local policy do not require a client release
     And the administrator cannot reclassify enforcement or invent an unimplemented benefit
 

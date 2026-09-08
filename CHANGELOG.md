@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 - 2026-09-08
+
+- Show unlimited cloud benefits as not metered instead of presenting historical counters as current usage.
+
 ## 0.7.0 - 2026-09-08
 
 - Add public-browser PKCE administration with provider token refresh and cross-tab coordination.

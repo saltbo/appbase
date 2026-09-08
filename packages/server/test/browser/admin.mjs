@@ -48,10 +48,10 @@ const db = { prepare, batch: async statements => Promise.all(statements.map(s =>
 const catalog = {
   freePlan: {
     id: "reader",
-    capabilities: { ai: { limit: 2, period: "utc_month" }, sources: {limit: 1, period: "lifetime"} },
+    capabilities: { ai: { limit: 2, period: "utc_month" }, sources: {limit: 1, period: "lifetime"}, metadata: {limit:null,period:"lifetime"} },
   },
   plans: [
-    { id: "studio", capabilities: { ai: { limit: 100, period: "utc_month" }, sources: {limit: null, period: "lifetime"} } },
+    { id: "studio", capabilities: { ai: { limit: 100, period: "utc_month" }, sources: {limit: null, period: "lifetime"}, metadata: {limit:null,period:"lifetime"} } },
   ],
   entitlementPlans: { premium: "studio" },
   honorGracePeriod: true,
@@ -62,7 +62,7 @@ for (const environment of ["production", "sandbox"]) {
   const billing = new BillingService(new D1BillingRepository(db, environment), {subscriber: async () => { throw new Error("No network allowed"); }}, catalog);
   const underlying = new BillingMembershipRepository(new D1MembershipRepository(db, environment), billing.repository, async () => (await billing.catalog()).catalog, environment === "sandbox");
   const membership = new MembershipService(underlying, {...catalog, loadCatalog: async () => (await billing.catalog()).catalog});
-  services[environment] = new AdminService(environment, new D1AdminUserDirectory(db,environment),membership,billing,underlying,()=>new Date(),{ai:{displayName:"AI requests",description:"Cloud AI calls",enforcement:"cloud",unit:"requests"},sources:{displayName:"Sources",description:"Device sources",enforcement:"client",unit:"sources"}},revenueCatAdministration({apiKeyConfigured:true,webhookAuthorizationConfigured:false,iosSdkConfigured:true,androidSdkConfigured:false}),new D1AdminPaymentEvents(db,environment));
+  services[environment] = new AdminService(environment, new D1AdminUserDirectory(db,environment),membership,billing,underlying,()=>new Date(),{ai:{displayName:"AI requests",description:"Cloud AI calls",enforcement:"cloud",unit:"requests"},sources:{displayName:"Sources",description:"Device sources",enforcement:"client",unit:"sources"},metadata:{displayName:"Metadata",description:"Unmetered cloud access",enforcement:"cloud",unit:"requests"}},revenueCatAdministration({apiKeyConfigured:true,webhookAuthorizationConfigured:false,iosSdkConfigured:true,androidSdkConfigured:false}),new D1AdminPaymentEvents(db,environment));
 }
 let allowed = true, configureAllowed = true;
 const environments = [{name:"production",url:"https://admin.example.test/admin/api"},{name:"sandbox",url:"https://admin.example.test/sandbox/admin/api"}];
@@ -130,6 +130,7 @@ try {
   await page.getByRole("heading",{name:"Cloud quotas",exact:true}).waitFor();
   await page.getByRole("heading",{name:"Local unlock policy",exact:true}).waitFor();
   await page.getByRole("cell",{name:"On device",exact:true}).waitFor();
+  await page.getByRole("cell",{name:"Not metered",exact:true}).waitFor();
   await page.screenshot({path:"/tmp/appbase-admin-benefits.png",fullPage:true});
   // Covers: S_ADMIN_PAYMENT_WORKSPACE case=happy_path
   await page.getByRole("button", {name:"Payment settings",exact:true}).click();
