@@ -46,3 +46,22 @@ may change existing capability limits, not names or accounting periods.
 Catalog administration can add paid plan identifiers using the existing free-plan capability schema. Existing plan identifiers and accounting periods must remain so stored grants and usage remain valid. Plans may carry an optional displayName; snapshots add displayName and isPaid. Missing names use the stable plan identifier for compatibility with existing catalogs. Clients should render the returned name and enforce capabilities, never classify paid access from a known plan identifier. Existing clients tolerate the additive response fields; clients that hardcode plan labels require one upgrade before remote tiers display correctly. Retire sale offerings rather than deleting historical plan definitions or entitlement mappings.
 
 The payment environment pilot requires migration 0004 and coordinated server rollout. Defaults retain production paths and old membership fields. The billing Dart client now preserves URL prefixes; no sync protocol or cursor version changes. See docs/billing.md for identity, webhook and rollout constraints.
+
+## Optional administration (unreleased)
+
+The admin subpath export adds independent HTTP/UI/OIDC routes and migration
+0005. It depends on the billing environment contract introduced by PR #6.
+Existing sync clients, cursors and membership representations are unchanged.
+
+| Consumer | Server requirement | Contract |
+| --- | --- | --- |
+| Admin UI shipped with server | Same server build, 0004 + 0005 | admin.openapi.json |
+| Existing mobile/sync clients | Admin module optional | Existing contracts unchanged |
+
+Manual grants affect clients only when the host adopts the composed membership
+repository for reads and quota enforcement. See [administration](admin.md).
+
+The unreleased admin contract requires `expectedRevision` from the user preview
+on grant creation. Older review-build clients must reload with the matched UI.
+Migration 0005 now includes database revision triggers and retention indexes;
+no previously reviewed 0005 draft has been deployed by this task.

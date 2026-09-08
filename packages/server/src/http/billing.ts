@@ -38,7 +38,7 @@ const plan = z
     ),
   })
   .strict();
-const catalogSchema = z
+export const catalogSchema = z
   .object({
     freePlan: plan,
     plans: z.array(plan).min(1).max(30),

@@ -8,6 +8,10 @@
     "migrations"
   ],
   "exports": {
+    "./admin": {
+      "types": "./dist/admin.d.ts",
+      "import": "./dist/admin.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
@@ -43,14 +47,16 @@
   "dependencies": {
     "hono": "4.12.29",
     "jose": "6.2.3",
+    "oauth4webapi": "3.8.8",
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "4.1.10",
     "@cloudflare/workers-types": "5.20260712.1",
+    "@types/node": "24.10.13",
+    "@vitest/coverage-v8": "4.1.10",
+    "playwright": "1.63.0",
     "typescript": "6.0.3",
-    "vitest": "4.1.10",
-    "@types/node": "24.10.13"
+    "vitest": "4.1.10"
   },
   "engines": {
     "node": ">=22"

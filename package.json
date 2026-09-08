@@ -7,7 +7,7 @@
   "scripts": {
     "build": "pnpm --filter @saltbo/appbase-server build",
     "format:check": "prettier --check 'packages/server/**/*.{ts,json}' 'templates/cloudflare-worker/**/*.{ts,json,jsonc}' 'protocol/**/*.{yaml,json}'",
-    "protocol:check": "redocly lint protocol/openapi.yaml",
+    "protocol:check": "redocly lint protocol/openapi.yaml protocol/admin.openapi.json",
     "template:check": "pnpm build && pnpm --filter appbase-cloudflare-worker check",
     "test": "pnpm --filter @saltbo/appbase-server test",
     "test:coverage": "pnpm --filter @saltbo/appbase-server test:coverage",
