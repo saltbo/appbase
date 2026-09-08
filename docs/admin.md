@@ -8,7 +8,7 @@ routes, UI, session cookies, or administration dependency in their client.
 
 | Existing storage | Operational use | Boundary |
 | --- | --- | --- |
-| billing_accounts | Exact subject/payment identity lookup and subscription snapshot | Read only; lookup never creates an identity |
+| billing_accounts | Paginated searchable payment customers and subscription details | Read only; lookup never creates an identity |
 | billing_catalog | Plan names, limits, entitlement mapping and grace policy | Existing validation and ETag concurrency rules |
 | membership_grants | Existing membership fallback | Never rewritten by administration |
 | membership_usage | Aggregate capability usage through MembershipService | No usage item identifiers exposed |
@@ -17,8 +17,13 @@ routes, UI, session cookies, or administration dependency in their client.
 | user_keys | Payload encryption keys | No administration access |
 
 AppBase does not own an email/name directory. The first release therefore uses
-exact subjects or opaque payment identities, rather than pretending to search
-Realmroot users by email. Lookup never creates users.
+subjects or opaque payment identities. It does not search Realmroot users by email.
+`GET /customers` lists only existing billing accounts, including accounts without
+a synchronized subscription. Search is a literal substring of either ID; pages
+are ordered by the unique subject, default to 20 rows and are capped at 50.
+Count and rows use a single two-statement D1 batch. The list projects plan names
+and synchronization time without fetching every customer’s quota usage.
+Details retain exact lookup, including existing sync-only subjects. Reads never create users.
 Private collections, WebDAV credentials, tokens, encryption keys, payment
 management URLs and arbitrary SQL are never exposed.
 
@@ -45,12 +50,16 @@ not editable in this administration module.
 
 ## Environment and compatibility
 
-Mount production at `/admin` and sandbox at `/sandbox/admin`. Both the service
-and billing repositories are constructed with one immutable environment. The
-request body/header is only a confirmation; it never selects storage.
-Environment links must be same-origin, and authorization receives the selected
-environment on every operation. Give production and sandbox permissions
-independently when the product requires different operator access.
+Mount one `createAdminPage` at `/admin`, one OIDC flow at `/admin/session`,
+and `createAdmin` with `serveUi: false` at `/admin/api` and `/sandbox/admin/api`.
+The page's environment selector changes only its API base; it does not navigate
+or persist the choice in the URL. Old `/sandbox/admin` bookmarks may redirect
+to `/admin`. APIs and billing repositories have immutable environments; the
+request header confirms a write and never selects storage. Every API operation
+independently authorizes access to its environment. Page assets contain no user
+data and may be served before login. Switching aborts old reads and discards
+stale responses. Catalog forms capture their API environment and revision;
+in-flight writes can only reach that original environment.
 
 This module depends on the separately reviewed billing environment migration
 and repositories. Do not enable both environments on the old unscoped billing
@@ -121,7 +130,7 @@ documented repository chain themselves.
 ```ts
 import { Hono } from "hono";
 import {
-  createAdmin, createAdminOidc, createD1AdminServices, D1AdminSessionStore,
+  createAdmin, createAdminPage, createAdminOidc, createD1AdminServices, D1AdminSessionStore,
 } from "@saltbo/appbase-server/admin";
 import { OidcAuthVerifier } from "@saltbo/appbase-server/cloudflare";
 
@@ -129,24 +138,25 @@ import { OidcAuthVerifier } from "@saltbo/appbase-server/cloudflare";
 const worker = new Hono();
 const operatorPolicy = (principal, capability, environment) =>
   principal.scopes.includes(`operations:${environment}:${capability}`);
-for (const environment of ["production", "sandbox"] as const) {
-  const path = environment === "production" ? "/admin" : "/sandbox/admin";
-  const url = env.PUBLIC_ORIGIN + path;
-  const oidc = createAdminOidc({
-    issuer: env.OIDC_ISSUER, audience: env.ADMIN_AUDIENCE,
-    clientId: env.ADMIN_CLIENT_ID, clientSecret: env.ADMIN_CLIENT_SECRET,
-    url, cookieKey: decodeCookieKey(env.ADMIN_COOKIE_KEY),
-    scopes: productRegisteredOperatorScopes,
-    sessions: new D1AdminSessionStore(env.DB),
-    verifier: new OidcAuthVerifier(env.OIDC_ISSUER, env.ADMIN_AUDIENCE),
-  });
-  worker.route(path + "/session", oidc.app);
-  worker.route(path, createAdmin({
-    environment, url, productName: env.PRODUCT_NAME,
-    environments: [
-      { name: "Production", url: env.PUBLIC_ORIGIN + "/admin/" },
-      { name: "Sandbox", url: env.PUBLIC_ORIGIN + "/sandbox/admin/" },
-    ],
+const environments = [
+  { name: "production", url: env.PUBLIC_ORIGIN + "/admin/api" },
+  { name: "sandbox", url: env.PUBLIC_ORIGIN + "/sandbox/admin/api" },
+] as const;
+const oidc = createAdminOidc({
+  issuer: env.OIDC_ISSUER, audience: env.ADMIN_AUDIENCE,
+  clientId: env.ADMIN_CLIENT_ID, clientSecret: env.ADMIN_CLIENT_SECRET,
+  url: env.PUBLIC_ORIGIN + "/admin", cookieKey: decodeCookieKey(env.ADMIN_COOKIE_KEY),
+  scopes: productRegisteredOperatorScopes,
+  sessions: new D1AdminSessionStore(env.DB),
+  verifier: new OidcAuthVerifier(env.OIDC_ISSUER, env.ADMIN_AUDIENCE),
+});
+worker.route("/admin/session", oidc.app);
+worker.route("/admin", createAdminPage({
+  url: env.PUBLIC_ORIGIN + "/admin", productName: env.PRODUCT_NAME, environments,
+}));
+for (const { name: environment, url } of environments) {
+  worker.route(new URL(url).pathname, createAdmin({
+    environment, url, serveUi: false, productName: env.PRODUCT_NAME, environments,
     authenticate: oidc.authenticate, authorize: operatorPolicy,
     service: () => createD1AdminServices(env.DB, environment, provider(environment), baseline).admin,
   }));

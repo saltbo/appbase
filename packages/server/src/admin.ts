@@ -1,6 +1,7 @@
 export * from "./usecases/admin.js";
 export {
   createAdmin,
+  createAdminPage,
   type AdminHttpOptions,
   type AdminCapability,
 } from "./http/admin.js";

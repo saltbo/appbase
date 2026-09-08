@@ -121,6 +121,31 @@ describe("actual Workerd D1 administration", () => {
     await s.billing.synchronize(owner);
     expect((await p.admin.user(owner)).membership.planId).toBe("studio");
     expect((await s.admin.user(owner)).membership.planId).toBe("starter");
+    // Covers: S_ADMIN_CUSTOMERS case=contract
+    const production = await p.admin.customers({
+      page: 1,
+      pageSize: 20,
+      query: owner,
+    });
+    const sandbox = await s.admin.customers({
+      page: 1,
+      pageSize: 20,
+      query: owner,
+    });
+    expect(production.items).toHaveLength(1);
+    expect(production.items[0]).toMatchObject({
+      ownerSub: owner,
+      isPaid: true,
+      planId: "studio",
+    });
+    expect(sandbox.items[0]).toMatchObject({
+      ownerSub: owner,
+      isPaid: false,
+      planId: "starter",
+    });
+    expect(production.items[0]!.appUserId).not.toBe(
+      sandbox.items[0]!.appUserId,
+    );
     expect(p.admin).not.toHaveProperty("create");
   });
 });

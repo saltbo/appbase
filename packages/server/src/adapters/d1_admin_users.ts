@@ -1,3 +1,4 @@
+import type { BillingState } from "../domain/billing.js";
 import type {
   AdminEnvironment,
   AdminUserDirectory,
@@ -9,6 +10,53 @@ export class D1AdminUserDirectory implements AdminUserDirectory {
     private readonly db: D1Database,
     private readonly environment: AdminEnvironment,
   ) {}
+  async list(input: {
+    page: number;
+    pageSize: number;
+    query: string;
+    now: string;
+  }) {
+    // A fixed two-query batch, without loading private records or counting usage per customer.
+    const pattern = "%" + input.query.replace(/[\\%_]/gu, "\\$&") + "%";
+    const where =
+      "a.environment=?1 AND (a.owner_sub LIKE ?2 ESCAPE '\\' OR a.app_user_id LIKE ?2 ESCAPE '\\')";
+    const [count, rows] = await this.db.batch<Record<string, unknown>>([
+      this.db
+        .prepare(
+          `SELECT COUNT(*) AS total FROM appbase_billing_accounts a WHERE ${where}`,
+        )
+        .bind(this.environment, pattern),
+      this.db
+        .prepare(
+          `SELECT a.owner_sub, a.app_user_id, a.state_json,
+        (SELECT g.plan_id FROM appbase_membership_grants g
+         WHERE g.environment=a.environment AND g.owner_sub=a.owner_sub
+           AND g.starts_at<=?3 AND (g.ends_at IS NULL OR g.ends_at>?3)
+         ORDER BY g.starts_at DESC LIMIT 1) AS legacy_plan_id
+        FROM appbase_billing_accounts a WHERE ${where}
+        ORDER BY a.owner_sub LIMIT ?4 OFFSET ?5`,
+        )
+        .bind(
+          this.environment,
+          pattern,
+          input.now,
+          input.pageSize,
+          (input.page - 1) * input.pageSize,
+        ),
+    ]);
+    return {
+      totalItems: Number(count!.results[0]!.total),
+      items: rows!.results.map((row) => ({
+        ownerSub: row.owner_sub as string,
+        appUserId: row.app_user_id as string,
+        state:
+          row.state_json == null
+            ? null
+            : (JSON.parse(row.state_json as string) as BillingState),
+        legacyPlanId: row.legacy_plan_id as string | null,
+      })),
+    };
+  }
   async find(query: string) {
     const account = await this.db
       .prepare(

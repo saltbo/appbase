@@ -18,6 +18,8 @@ import { adminHtml, adminScript, adminStyle } from "./admin_ui.js";
 export type AdminCapability = "admin:read" | "billing:configure";
 export type AdminHttpOptions<B extends object> = {
   environment: AdminEnvironment;
+  /** Disable bundled assets when hosting one shared page with createAdminPage. */
+  serveUi?: boolean;
   productName: string;
   service: (bindings: B) => AdminService;
   authenticate: (request: Request, bindings: B) => Promise<Principal>;
@@ -123,15 +125,21 @@ export function createAdmin<B extends object>(options: AdminHttpOptions<B>) {
         "The selected environment changed. Reload before writing.",
       );
   };
-  app.get("/", (c) =>
-    c.html(adminHtml(base.pathname.replace(/\/$/u, ""), options.productName)),
-  );
-  app.get("/admin.js", (c) =>
-    c.body(adminScript, 200, { "Content-Type": "text/javascript" }),
-  );
-  app.get("/admin.css", (c) =>
-    c.body(adminStyle, 200, { "Content-Type": "text/css" }),
-  );
+  if (options.serveUi !== false) {
+    app.get("/", (c) =>
+      c.html(
+        adminHtml(base.pathname.replace(/\/$/u, ""), options.productName, [
+          { name: options.environment, url: options.url },
+        ]),
+      ),
+    );
+    app.get("/admin.js", (c) =>
+      c.body(adminScript, 200, { "Content-Type": "text/javascript" }),
+    );
+    app.get("/admin.css", (c) =>
+      c.body(adminStyle, 200, { "Content-Type": "text/css" }),
+    );
+  }
   app.get("/context", async (c) => {
     const p = await authorize(c.req.raw, c.env, "admin:read");
     return c.json({
@@ -145,6 +153,38 @@ export function createAdmin<B extends object>(options: AdminHttpOptions<B>) {
         options.environment,
       ),
     });
+  });
+  app.get("/customers", async (c) => {
+    await authorize(c.req.raw, c.env, "admin:read");
+    const integer = (fallback: number, max: number) =>
+      z
+        .string()
+        .regex(/^[1-9][0-9]*$/u)
+        .transform(Number)
+        .pipe(z.number().int().min(1).max(max))
+        .default(fallback);
+    const input = z
+      .object({
+        page: integer(1, 1000000),
+        pageSize: integer(20, 50),
+        query: z.string().trim().max(200).default(""),
+      })
+      .parse(c.req.query());
+    const result = await service(c.env).customers(input);
+    const links: string[] = [];
+    for (const [rel, page] of [
+      ["first", 1],
+      ["prev", input.page - 1],
+      ["next", input.page + 1],
+      ["last", result.pagination.totalPages],
+    ] as const) {
+      if (page < 1 || page > result.pagination.totalPages) continue;
+      const url = new URL(c.req.url);
+      url.searchParams.set("page", String(page));
+      links.push(`<${url.href}>; rel="${rel}"`);
+    }
+    if (links.length) c.header("Link", links.join(", "));
+    return c.json(result);
   });
   app.get("/users", async (c) => {
     await authorize(c.req.raw, c.env, "admin:read");
@@ -176,11 +216,78 @@ export function createAdmin<B extends object>(options: AdminHttpOptions<B>) {
   });
   // Hono normalizes a mounted child root to /admin; also serve its canonical /admin/ URL.
   app.get("/*", (c) =>
+    options.serveUi !== false &&
     new URL(c.req.url).pathname === base.pathname.replace(/\/$/u, "") + "/"
       ? c.html(
-          adminHtml(base.pathname.replace(/\/$/u, ""), options.productName),
+          adminHtml(base.pathname.replace(/\/$/u, ""), options.productName, [
+            { name: options.environment, url: options.url },
+          ]),
         )
       : c.notFound(),
+  );
+  return app;
+}
+
+/** Public static shell; each configured API independently authenticates and authorizes. */
+export function createAdminPage(options: {
+  url: string;
+  productName: string;
+  environments: readonly { name: AdminEnvironment; url: string }[];
+}) {
+  const base = new URL(options.url);
+  if (
+    base.protocol !== "https:" ||
+    base.search ||
+    base.hash ||
+    base.username ||
+    base.password
+  )
+    throw new Error("Admin requires a fixed HTTPS mount URL.");
+  if (
+    !options.environments.length ||
+    new Set(options.environments.map((e) => e.name)).size !==
+      options.environments.length
+  )
+    throw new Error("Admin requires unique environments.");
+  for (const e of options.environments) {
+    const url = new URL(e.url);
+    if (
+      url.origin !== base.origin ||
+      url.search ||
+      url.hash ||
+      url.username ||
+      url.password
+    )
+      throw new Error("Admin APIs must be fixed same-origin URLs.");
+  }
+  const app = new Hono();
+  app.use("*", async (c, next) => {
+    c.header("Cache-Control", "private, no-store");
+    c.header("Referrer-Policy", "no-referrer");
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header(
+      "Content-Security-Policy",
+      "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+    );
+    await next();
+  });
+  const html = () =>
+    adminHtml(
+      base.pathname.replace(/\/$/u, ""),
+      options.productName,
+      options.environments,
+    );
+  app.get("/", (c) => c.html(html()));
+  app.get("/admin.js", (c) =>
+    c.body(adminScript, 200, { "Content-Type": "text/javascript" }),
+  );
+  app.get("/admin.css", (c) =>
+    c.body(adminStyle, 200, { "Content-Type": "text/css" }),
+  );
+  app.get("/*", (c, next) =>
+    new URL(c.req.url).pathname === base.pathname.replace(/\/$/u, "") + "/"
+      ? c.html(html())
+      : next(),
   );
   return app;
 }

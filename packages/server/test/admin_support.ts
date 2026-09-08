@@ -7,6 +7,7 @@ import { BillingMembershipRepository } from "../src/usecases/billing_membership_
 import { AdminService, type AdminEnvironment } from "../src/usecases/admin.js";
 import { MembershipService } from "../src/usecases/membership.js";
 import type { BillingCatalog, BillingState } from "../src/domain/billing.js";
+import { D1AdminUserDirectory } from "../src/adapters/d1_admin_users.js";
 export function sqlite() {
   const sqlite = new DatabaseSync(":memory:");
   let databaseTime = Date.parse("2026-09-07T00:00:00.000Z");
@@ -46,7 +47,20 @@ export function sqlite() {
     }) as D1PreparedStatement;
   return {
     sqlite,
-    db: { prepare } as D1Database,
+    db: {
+      prepare,
+      batch: async (statements: D1PreparedStatement[]) => {
+        sqlite.exec("BEGIN");
+        try {
+          const result = await Promise.all(statements.map((s) => s.all()));
+          sqlite.exec("COMMIT");
+          return result;
+        } catch (e) {
+          sqlite.exec("ROLLBACK");
+          throw e;
+        }
+      },
+    } as D1Database,
     setDatabaseTime: (value: string) => {
       databaseTime = Date.parse(value);
     },
@@ -104,7 +118,11 @@ export function setup(
   });
   const service = new AdminService(
     environment,
-    { find: async (q) => (q === "user" ? { ownerSub: "user" } : null) },
+    {
+      find: async (q) => (q === "user" ? { ownerSub: "user" } : null),
+      list: (input) =>
+        new D1AdminUserDirectory(database.db, environment).list(input),
+    },
     membership,
     billing,
     underlying,
