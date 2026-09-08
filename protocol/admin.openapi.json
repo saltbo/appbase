@@ -111,241 +111,6 @@
         ]
       }
     },
-    "/manual-grants": {
-      "get": {
-        "operationId": "listManualGrants",
-        "summary": "listManualGrants",
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "x-required-capabilities": ["admin:read"],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GrantPage"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Session expired or unauthenticated"
-          },
-          "403": {
-            "description": "Insufficient management permission or invalid Origin"
-          },
-          "404": {
-            "description": "User or grant not found"
-          },
-          "409": {
-            "description": "Environment, preview or grant state conflict"
-          },
-          "422": {
-            "description": "Invalid input"
-          },
-          "500": {
-            "description": "Operation failed; inspect state before retrying"
-          }
-        },
-        "parameters": [
-          {
-            "name": "ownerSub",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "before",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "post": {
-        "operationId": "createManualGrant",
-        "summary": "createManualGrant",
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "x-required-capabilities": ["admin:read", "admin:grants:write"],
-        "responses": {
-          "201": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ManualGrant"
-                }
-              }
-            },
-            "headers": {
-              "Location": {
-                "description": "Absolute grant resource URL",
-                "schema": {
-                  "type": "string",
-                  "format": "uri"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Session expired or unauthenticated"
-          },
-          "403": {
-            "description": "Insufficient management permission or invalid Origin"
-          },
-          "404": {
-            "description": "User or grant not found"
-          },
-          "409": {
-            "description": "Environment, preview or grant state conflict"
-          },
-          "422": {
-            "description": "Invalid input"
-          },
-          "500": {
-            "description": "Operation failed; inspect state before retrying"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateGrant"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/manual-grants/{id}": {
-      "get": {
-        "operationId": "getManualGrant",
-        "summary": "getManualGrant",
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "x-required-capabilities": ["admin:read"],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ManualGrant"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Session expired or unauthenticated"
-          },
-          "403": {
-            "description": "Insufficient management permission or invalid Origin"
-          },
-          "404": {
-            "description": "User or grant not found"
-          },
-          "409": {
-            "description": "Environment, preview or grant state conflict"
-          },
-          "422": {
-            "description": "Invalid input"
-          },
-          "500": {
-            "description": "Operation failed; inspect state before retrying"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ]
-      }
-    },
-    "/manual-grants/{id}/revocation": {
-      "put": {
-        "operationId": "createManualGrantRevocation",
-        "summary": "createManualGrantRevocation",
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "x-required-capabilities": ["admin:read", "admin:grants:write"],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ManualGrant"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Session expired or unauthenticated"
-          },
-          "403": {
-            "description": "Insufficient management permission or invalid Origin"
-          },
-          "404": {
-            "description": "User or grant not found"
-          },
-          "409": {
-            "description": "Environment, preview or grant state conflict"
-          },
-          "422": {
-            "description": "Invalid input"
-          },
-          "500": {
-            "description": "Operation failed; inspect state before retrying"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateRevocation"
-              }
-            }
-          }
-        }
-      }
-    },
     "/catalog": {
       "get": {
         "operationId": "getAdminCatalog",
@@ -575,7 +340,7 @@
             "format": "date-time"
           },
           "expiresAt": {
-            "type": "string",
+            "type": ["string", "null"],
             "format": "date-time"
           },
           "graceEndsAt": {
@@ -666,180 +431,6 @@
         ],
         "additionalProperties": false
       },
-      "Revocation": {
-        "type": "object",
-        "properties": {
-          "reason": {
-            "type": "string"
-          },
-          "createdBy": {
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": ["reason", "createdBy", "createdAt"],
-        "additionalProperties": false
-      },
-      "ManualGrant": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "environment": {
-            "$ref": "#/components/schemas/Environment"
-          },
-          "ownerSub": {
-            "type": "string"
-          },
-          "planId": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string",
-            "const": "manual"
-          },
-          "startsAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "endsAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "reason": {
-            "type": "string"
-          },
-          "createdBy": {
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "previousPlanId": {
-            "type": "string"
-          },
-          "catalogRevision": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "revocation": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Revocation"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "environment",
-          "ownerSub",
-          "planId",
-          "source",
-          "startsAt",
-          "endsAt",
-          "reason",
-          "createdBy",
-          "createdAt",
-          "previousPlanId",
-          "catalogRevision",
-          "revocation"
-        ],
-        "additionalProperties": false
-      },
-      "CreateGrant": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "environment": {
-            "$ref": "#/components/schemas/Environment"
-          },
-          "ownerSub": {
-            "type": "string"
-          },
-          "planId": {
-            "type": "string"
-          },
-          "endsAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "reason": {
-            "type": "string"
-          },
-          "expectedMembership": {
-            "$ref": "#/components/schemas/Snapshot"
-          },
-          "expectedCatalogRevision": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "expectedRevision": {
-            "$ref": "#/components/schemas/AdminRevision"
-          }
-        },
-        "required": [
-          "id",
-          "environment",
-          "ownerSub",
-          "planId",
-          "endsAt",
-          "reason",
-          "expectedMembership",
-          "expectedCatalogRevision",
-          "expectedRevision"
-        ],
-        "additionalProperties": false
-      },
-      "CreateRevocation": {
-        "type": "object",
-        "properties": {
-          "reason": {
-            "type": "string"
-          },
-          "environment": {
-            "$ref": "#/components/schemas/Environment"
-          }
-        },
-        "required": ["reason", "environment"],
-        "additionalProperties": false
-      },
-      "GrantPage": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ManualGrant"
-            }
-          },
-          "next": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": ["items", "next"],
-        "additionalProperties": false
-      },
       "User": {
         "type": "object",
         "properties": {
@@ -851,16 +442,6 @@
           },
           "membership": {
             "$ref": "#/components/schemas/Snapshot"
-          },
-          "manualGrant": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ManualGrant"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "subscription": {
             "anyOf": [
@@ -887,20 +468,10 @@
           },
           "source": {
             "type": "string",
-            "enum": ["manual", "subscription", "legacy", "default"]
-          },
-          "expectedRevision": {
-            "$ref": "#/components/schemas/AdminRevision"
+            "enum": ["subscription", "legacy", "default"]
           }
         },
-        "required": [
-          "ownerSub",
-          "membership",
-          "manualGrant",
-          "subscription",
-          "source",
-          "expectedRevision"
-        ],
+        "required": ["ownerSub", "membership", "subscription", "source"],
         "additionalProperties": false
       },
       "Context": {
@@ -932,9 +503,6 @@
               "additionalProperties": false
             }
           },
-          "canGrant": {
-            "type": "boolean"
-          },
           "canConfigure": {
             "type": "boolean"
           }
@@ -944,34 +512,9 @@
           "productName",
           "operator",
           "environments",
-          "canGrant",
           "canConfigure"
         ],
         "additionalProperties": false
-      },
-      "AdminRevision": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "user": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "catalog": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "validUntil": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "catalogFingerprint": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{64}$"
-          }
-        },
-        "required": ["user", "catalog", "validUntil", "catalogFingerprint"],
-        "description": "Opaque optimistic version and Unix-second deadline. Obtain from the user preview and submit unchanged; expired or changed state conflicts."
       }
     }
   }

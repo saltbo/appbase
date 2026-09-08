@@ -1,0 +1,25 @@
+-- Refuse destructive retirement until any existing manual grants are migrated.
+CREATE TABLE appbase_manual_grant_retirement_guard (remaining INTEGER NOT NULL CHECK(remaining=0));
+INSERT INTO appbase_manual_grant_retirement_guard SELECT COUNT(*) FROM appbase_admin_grants;
+DROP TABLE appbase_manual_grant_retirement_guard;
+DROP TRIGGER appbase_admin_grants_admin_revision_insert;
+DROP TRIGGER appbase_admin_grants_admin_revision_delete;
+DROP TRIGGER appbase_admin_grants_admin_revision_update;
+DROP TRIGGER appbase_membership_grants_admin_revision_insert;
+DROP TRIGGER appbase_membership_grants_admin_revision_delete;
+DROP TRIGGER appbase_membership_grants_admin_revision_update;
+DROP TRIGGER appbase_membership_usage_admin_revision_insert;
+DROP TRIGGER appbase_membership_usage_admin_revision_delete;
+DROP TRIGGER appbase_membership_usage_admin_revision_update;
+DROP TRIGGER appbase_billing_accounts_admin_revision_insert;
+DROP TRIGGER appbase_billing_accounts_admin_revision_delete;
+DROP TRIGGER appbase_billing_accounts_admin_revision_update;
+DROP TRIGGER appbase_billing_catalog_admin_revision_insert;
+DROP TRIGGER appbase_billing_catalog_admin_revision_delete;
+DROP TRIGGER appbase_billing_catalog_admin_revision_update;
+DROP TRIGGER appbase_records_admin_revision_insert;
+DROP TRIGGER appbase_records_admin_revision_delete;
+DROP TRIGGER appbase_records_admin_revision_update;
+DROP TABLE appbase_admin_grants;
+DROP TABLE appbase_admin_user_revisions;
+DROP TABLE appbase_admin_catalog_revisions;

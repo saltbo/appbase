@@ -94,7 +94,9 @@ function membership(m) {
 async function loadCatalog() {
   const result = await api("/catalog");
   catalog = result.data;
-  etag = result.response.headers.get("etag");
+  const revision = result.response.headers.get("AppBase-Catalog-Revision");
+  if (!/^(0|[1-9][0-9]*)$/.test(revision ?? "")) throw new Error("Invalid catalog revision.");
+  etag = '"' + revision + '"';
 }
 function home() {
   content.innerHTML =
@@ -111,9 +113,6 @@ function home() {
 async function showUser(query) {
   await loadCatalog();
   user = (await api("/users?query=" + encodeURIComponent(query))).data;
-  const grants = (
-    await api("/manual-grants?ownerSub=" + encodeURIComponent(user.ownerSub))
-  ).data;
   content.innerHTML =
     '<button class="secondary" id="back">Back to search</button><h2>User membership</h2><p>Subject: <code>' +
     esc(user.ownerSub) +
@@ -124,7 +123,6 @@ async function showUser(query) {
     "<p>Effective source: " +
     esc(
       {
-        manual: "Manual override",
         subscription: "Subscription",
         legacy: "Existing membership grant",
         default: "Default plan",
@@ -137,156 +135,11 @@ async function showUser(query) {
       ? pretty(user.subscription)
       : "<p>No synchronized subscription.</p>") +
     '<div class="actions">' +
-    (context.canGrant ? '<button id="grant">Grant membership</button>' : "") +
-    '<button class="secondary" id="refresh">Refresh</button></div><h2>Manual grant history</h2><div id="history"></div>';
+    '<button class="secondary" id="refresh">Refresh</button></div><p>Complimentary access is managed in RevenueCat using the payment identity above.</p>';
   document.getElementById("back").onclick = home;
-  document.getElementById("grant")?.addEventListener("click", grantForm);
   document.getElementById("refresh").onclick = () =>
     showUser(user.ownerSub).catch((e) => message(e.message, true));
-  renderGrants(grants);
   message("Membership loaded in " + context.environment + ".");
-}
-function renderGrants(page, append = false) {
-  const target = document.getElementById("history");
-  if (!append) target.innerHTML = "";
-  document.getElementById("more")?.remove();
-  if (!page.items.length && !append)
-    target.innerHTML = "<p>No manual grants.</p>";
-  for (const grant of page.items) {
-    const card = document.createElement("article");
-    card.className = "card";
-    card.innerHTML =
-      "<h3>" +
-      esc(grant.planId) +
-      "</h3><p>" +
-      esc(grant.startsAt) +
-      " — " +
-      esc(grant.endsAt) +
-      "</p><p>Reason: " +
-      esc(grant.reason) +
-      "</p><small>Created by " +
-      esc(grant.createdBy) +
-      " at " +
-      esc(grant.createdAt) +
-      "</small>" +
-      (grant.revocation
-        ? "<p>Revoked by " +
-          esc(grant.revocation.createdBy) +
-          " at " +
-          esc(grant.revocation.createdAt) +
-          ": " +
-          esc(grant.revocation.reason) +
-          "</p>"
-        : "<p>Not revoked</p>");
-    if (context.canGrant && !grant.revocation) {
-      const b = document.createElement("button");
-      b.textContent = "Revoke grant";
-      b.className = "secondary";
-      b.onclick = () => revokeForm(grant);
-      card.append(b);
-    }
-    target.append(card);
-  }
-  if (page.next) {
-    const b = document.createElement("button");
-    b.id = "more";
-    b.textContent = "Load older grants";
-    b.onclick = async () => {
-      try {
-        renderGrants(
-          (
-            await api(
-              "/manual-grants?ownerSub=" +
-                encodeURIComponent(user.ownerSub) +
-                "&before=" +
-                encodeURIComponent(page.next),
-            )
-          ).data,
-          true,
-        );
-      } catch (e) {
-        message(e.message, true);
-      }
-    };
-    target.append(b);
-  }
-}
-function grantForm() {
-  const id = crypto.randomUUID();
-  content.innerHTML =
-    '<button class="secondary" id="cancel">Back to membership</button><h2>Grant membership</h2><p>Target: <code>' +
-    esc(user.ownerSub) +
-    "</code> · <strong>" +
-    esc(context.environment) +
-    '</strong></p><div class="warning">This overrides all active subscription benefits, even when the selected plan has lower limits. Expiry or revocation restores underlying membership. It does not cancel a subscription.</div><h3>Current effective membership</h3>' +
-    membership(user.membership) +
-    '<form id="grant-form"><label for="plan">Override plan</label><select id="plan" name="planId">' +
-    [catalog.freePlan, ...catalog.plans]
-      .map(
-        (p) =>
-          '<option value="' + esc(p.id) + '">' + esc(planName(p)) + "</option>",
-      )
-      .join("") +
-    '</select><div id="proposed"></div><label for="ends">Expires at (UTC)</label><input id="ends" name="endsAt" type="datetime-local" required><label for="reason">Reason</label><textarea id="reason" name="reason" required maxlength="2000"></textarea><label for="confirm">Type ' +
-    esc(context.environment) +
-    ' to confirm the override</label><input id="confirm" name="environment" required autocomplete="off"><div class="actions"><button type="submit">Confirm manual grant</button></div></form>';
-  const plan = document.getElementById("plan");
-  const preview = () => {
-    const p = [catalog.freePlan, ...catalog.plans].find(
-      (p) => p.id === plan.value,
-    );
-    document.getElementById("proposed").innerHTML =
-      "<h3>Resulting plan limits</h3>" + pretty(p.capabilities);
-  };
-  plan.onchange = preview;
-  preview();
-  document.getElementById("cancel").onclick = () =>
-    showUser(user.ownerSub).catch((e) => message(e.message, true));
-  bindForm("grant-form", async (f) => {
-    await api("/manual-grants", {
-      method: "POST",
-      body: JSON.stringify({
-        id,
-        ownerSub: user.ownerSub,
-        planId: f.get("planId"),
-        endsAt: new Date(f.get("endsAt") + "Z").toISOString(),
-        reason: f.get("reason"),
-        environment: f.get("environment"),
-        expectedMembership: user.membership,
-        expectedRevision: user.expectedRevision,
-        expectedCatalogRevision: Number(etag.slice(1, -1)),
-      }),
-    });
-    await showUser(user.ownerSub);
-    message("Manual grant created. Effective membership refreshed.");
-  });
-}
-function revokeForm(grant) {
-  content.innerHTML =
-    '<button class="secondary" id="cancel">Back to membership</button><h2>Revoke manual grant</h2><p>Target: <code>' +
-    esc(user.ownerSub) +
-    "</code> · <strong>" +
-    esc(context.environment) +
-    "</strong></p><p>Grant: " +
-    esc(grant.planId) +
-    " · " +
-    esc(grant.id) +
-    '</p><p>Revocation is permanent. The next active manual grant, then underlying subscription or default membership, takes effect. Payment transactions are unchanged.</p><form id="revoke-form"><label for="reason">Revocation reason</label><textarea name="reason" id="reason" required maxlength="2000"></textarea><label for="confirm">Type ' +
-    esc(context.environment) +
-    ' to confirm</label><input name="environment" id="confirm" required autocomplete="off"><div class="actions"><button type="submit">Confirm revocation</button></div></form>';
-  document.getElementById("cancel").onclick = () =>
-    showUser(user.ownerSub).catch((e) => message(e.message, true));
-  bindForm("revoke-form", async (f) => {
-    await api("/manual-grants/" + grant.id + "/revocation", {
-      method: "PUT",
-      body: JSON.stringify({
-        reason: f.get("reason"),
-        environment: f.get("environment"),
-      }),
-    });
-    await showUser(user.ownerSub);
-    message("Grant revoked. Effective membership refreshed.");
-  });
 }
 async function configure() {
   try {

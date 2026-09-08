@@ -343,7 +343,6 @@ export const billingOpenApi = {
       Plan: {
         type: "object",
         properties: {
-          displayName: { type: "string", minLength: 1, maxLength: 100 },
           id: {
             type: "string",
           },
@@ -352,6 +351,11 @@ export const billingOpenApi = {
             additionalProperties: {
               $ref: "#/components/schemas/Capability",
             },
+          },
+          displayName: {
+            type: "string",
+            minLength: 1,
+            maxLength: 100,
           },
         },
         required: ["id", "capabilities"],
@@ -424,7 +428,7 @@ export const billingOpenApi = {
             format: "date-time",
           },
           expiresAt: {
-            type: "string",
+            type: ["string", "null"],
             format: "date-time",
           },
           graceEndsAt: {

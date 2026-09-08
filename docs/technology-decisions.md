@@ -4,8 +4,9 @@
 
 Keep administration in the existing TypeScript/Hono server package as an
 optional subpath export. Native browser controls and small static assets avoid
-a new frontend framework. D1 retains append-only grant identity and conditional
-revocation audit; administration has no payload decryption dependency.
+a new frontend framework. RevenueCat owns complimentary entitlement grants and revocation; administration
+only observes membership and configures product quotas, with no local override
+engine or payload decryption dependency.
 
 Use oauth4webapi for standards-based confidential OIDC/PKCE processing rather
 than implement token exchange and validation rules manually. Existing JOSE and

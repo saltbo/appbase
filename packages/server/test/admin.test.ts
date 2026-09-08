@@ -1,5 +1,7 @@
+import { DatabaseSync } from "node:sqlite";
+import { readFileSync } from "node:fs";
 // Covers: S_ADMIN_D1_RUNTIME case=contract
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { D1MembershipRepository } from "../src/adapters/d1_membership_repository.js";
 import { setup, catalog, sqlite } from "./admin_support.js";
 import { createAdmin } from "../src/http/admin.js";
@@ -9,301 +11,7 @@ import { D1AdminSessionStore } from "../src/adapters/d1_admin_sessions.js";
 import { createD1AdminServices } from "../src/adapters/d1_admin_composition.js";
 import { adminOpenApi } from "../src/http/admin_contract.js";
 import contract from "../../../protocol/admin.openapi.json" with { type: "json" };
-import fixture from "../../../protocol/fixtures/admin-contract.json" with { type: "json" };
 
-const id = "00000000-0000-4000-8000-000000000001";
-const second = "00000000-0000-4000-8000-000000000002";
-const input = async (
-  s: ReturnType<typeof setup>,
-  planId = "team",
-  grantId = id,
-) => ({
-  id: grantId,
-  ownerSub: "user",
-  planId,
-  endsAt: "2026-09-10T00:00:00.000Z",
-  reason: "Support case 42",
-  expectedMembership: await s.membership.snapshot("user"),
-  expectedCatalogRevision: (await s.billing.catalog()).revision,
-  expectedRevision: (await s.service.user("user")).expectedRevision,
-});
-describe("manual membership", () => {
-  it("invalidates a proposed bootstrap plan change even without a catalog database write", async () => {
-    const s = setup();
-    await s.billing.repository.identity("user");
-    const preview = await input(s);
-    const modified = {
-      ...catalog,
-      plans: catalog.plans.map((p) => ({
-        ...p,
-        displayName: "New deployment label",
-      })),
-    };
-    const next = createD1AdminServices(
-      s.db,
-      "production",
-      {
-        subscriber: async () => {
-          throw new Error("unused");
-        },
-      },
-      modified,
-      () => new Date("2026-09-07T00:00:00.000Z"),
-    );
-    await expect(next.admin.create(preview, "operator")).rejects.toMatchObject({
-      status: 409,
-    });
-    expect(await s.grants.list("user")).toHaveLength(0);
-  });
-  // Covers: S_ADMIN_CONCURRENCY case=happy_path
-  it("atomically rejects one of two writers that both passed the same preview checks", async () => {
-    const s = setup();
-    const preview = await input(s);
-    let arrivals = 0;
-    let release!: () => void;
-    const barrier = new Promise<void>((r) => {
-      release = r;
-    });
-    const create = s.grants.create.bind(s.grants);
-    vi.spyOn(s.grants, "create").mockImplementation(async (g, expected) => {
-      if (++arrivals === 2) release();
-      await barrier;
-      return create(g, expected);
-    });
-    const results = await Promise.allSettled([
-      s.service.create({ ...preview, planId: "team" }, "operator-a"),
-      s.service.create(
-        { ...preview, id: second, planId: "starter" },
-        "operator-b",
-      ),
-    ]);
-    expect(arrivals).toBe(2);
-    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    expect(results.find((r) => r.status === "rejected")).toMatchObject({
-      reason: { status: 409 },
-    });
-    const history = await s.grants.list("user");
-    expect(history).toHaveLength(1);
-    expect((await s.membership.snapshot("user")).planId).toBe(
-      history[0]!.planId,
-    );
-  });
-  // Covers: S_ADMIN_CONCURRENCY case=error_path
-  it.each([
-    "catalog",
-    "billing",
-    "legacy",
-    "usage",
-    "directory",
-    "expiry",
-    "month",
-    "proposed-expiry",
-  ])(
-    "rejects a %s change between validation and the actual INSERT",
-    async (change) => {
-      const s = setup();
-      if (change === "expiry")
-        await new D1MembershipRepository(s.db).putGrant({
-          id: "legacy",
-          ownerSub: "user",
-          planId: "starter",
-          source: "test",
-          startsAt: "2026-09-01T00:00:00.000Z",
-          endsAt: "2026-09-07T00:00:01.000Z",
-          createdAt: "2026-09-01T00:00:00.000Z",
-        });
-      if (change === "month") s.setNow("2026-09-30T23:59:59.000Z");
-      const preview = {
-        ...(await input(s)),
-        endsAt:
-          change === "proposed-expiry"
-            ? "2026-09-07T00:00:01.000Z"
-            : "2026-11-10T00:00:00.000Z",
-      };
-      const create = s.grants.create.bind(s.grants);
-      vi.spyOn(s.grants, "create").mockImplementation(async (g, expected) => {
-        if (change === "catalog")
-          await s.billing.replaceCatalog(
-            { ...catalog, honorGracePeriod: false },
-            0,
-          );
-        if (change === "billing") await s.billing.repository.identity("user");
-        if (change === "legacy")
-          await new D1MembershipRepository(s.db).putGrant({
-            id: "same-plan-new-source",
-            ownerSub: "user",
-            planId: "starter",
-            source: "test",
-            startsAt: "2026-09-01T00:00:00.000Z",
-            endsAt: null,
-            createdAt: "2026-09-01T00:00:00.000Z",
-          });
-        if (change === "usage")
-          await s.membership.claimUnique("user", "ai", "item");
-        if (change === "directory")
-          s.sqlite.exec(
-            "INSERT INTO appbase_records(owner_sub,collection,record_id,device_id,mutation_id,revision,created_at) VALUES ('user','private','r','d','m','rev','now')",
-          );
-        if (change === "expiry" || change === "proposed-expiry")
-          s.setDatabaseTime("2026-09-07T00:00:01.000Z");
-        if (change === "month") s.setDatabaseTime("2026-10-01T00:00:00.000Z");
-        return create(g, expected);
-      });
-      await expect(s.service.create(preview, "operator")).rejects.toMatchObject(
-        { status: 409 },
-      );
-      expect(await s.grants.list("user")).toEqual([]);
-    },
-  );
-  it("keeps unrelated users and environments independent", async () => {
-    const s = setup(),
-      sandbox = setup("sandbox", s);
-    const preview = await input(s);
-    const create = s.grants.create.bind(s.grants);
-    vi.spyOn(s.grants, "create").mockImplementation(async (g, expected) => {
-      await sandbox.billing.repository.identity("user");
-      await s.billing.repository.identity("other");
-      return create(g, expected);
-    });
-    await expect(s.service.create(preview, "operator")).resolves.toMatchObject({
-      id,
-    });
-  });
-  it("rejects a stale proposed catalog and reports the effective source", async () => {
-    const s = setup();
-    const preview = await input(s);
-    expect((await s.service.user("user")).source).toBe("default");
-    const updated = {
-      ...catalog,
-      plans: catalog.plans.map((p) => ({ ...p, displayName: "Updated name" })),
-    };
-    await s.billing.replaceCatalog(updated, 0);
-    await expect(s.service.create(preview, "operator")).rejects.toMatchObject({
-      status: 409,
-    });
-    expect(await s.grants.list("user")).toEqual([]);
-    await s.billing.synchronize("user");
-    expect((await s.service.user("user")).source).toBe("subscription");
-    await s.service.create(await input(s), "operator");
-    expect((await s.service.user("user")).source).toBe("manual");
-  });
-  // Covers: S_ADMIN_GRANTS case=happy_path
-  it("temporarily overrides paid membership, including a lower plan, without changing billing state", async () => {
-    const s = setup();
-    await s.billing.synchronize("user");
-    const before = await s.billing.repository.state("user");
-    const created = await s.service.create(
-      await input(s, "starter"),
-      "operator",
-    );
-    expect(created).toMatchObject({
-      source: "manual",
-      createdBy: "operator",
-      reason: "Support case 42",
-      environment: "production",
-    });
-    expect((await s.membership.snapshot("user")).planId).toBe("starter");
-    s.setNow("2026-09-10T00:00:00.000Z");
-    expect((await s.membership.snapshot("user")).planId).toBe("studio");
-    expect(await s.billing.repository.state("user")).toEqual(before);
-  });
-  it("orders simultaneous grants by id and preserves revocation audit", async () => {
-    const s = setup();
-    await s.billing.synchronize("user");
-    await s.service.create(await input(s, "team"), "operator");
-    await s.service.create(await input(s, "starter", second), "operator2");
-    expect((await s.membership.snapshot("user")).planId).toBe("starter");
-    await s.service.revoke(second, "Incorrect plan", "reviewer");
-    expect((await s.membership.snapshot("user")).planId).toBe("team");
-    await s.service.revoke(id, "Finished", "reviewer");
-    expect((await s.membership.snapshot("user")).planId).toBe("studio");
-    expect((await s.grants.get(second))?.revocation).toMatchObject({
-      createdBy: "reviewer",
-      reason: "Incorrect plan",
-    });
-    await expect(
-      s.service.revoke(second, "again", "reviewer"),
-    ).rejects.toMatchObject({ status: 409 });
-    expect((await s.grants.list("user")).map((g) => g.id)).toEqual([
-      second,
-      id,
-    ]);
-    expect((await s.grants.list("user", second)).map((g) => g.id)).toEqual([
-      id,
-    ]);
-  });
-  // Covers: S_ADMIN_GRANTS case=error_path
-  it("rejects invalid plans, stale previews, duplicate ids, expired grants and unknown users", async () => {
-    const s = setup();
-    const original = await input(s);
-    await expect(
-      s.service.create({ ...original, planId: "invented" }, "op"),
-    ).rejects.toMatchObject({ status: 422 });
-    await expect(
-      s.service.create(
-        { ...original, endsAt: "2026-09-01T00:00:00.000Z" },
-        "op",
-      ),
-    ).rejects.toMatchObject({ status: 422 });
-    await expect(
-      s.service.create({ ...original, ownerSub: "unknown" }, "op"),
-    ).rejects.toMatchObject({ status: 404 });
-    await s.service.create(original, "op");
-    await expect(
-      s.service.create({ ...original, id: second }, "op"),
-    ).rejects.toMatchObject({ status: 409 });
-    await expect(s.service.create(await input(s), "op")).rejects.toMatchObject({
-      status: 409,
-    });
-    await expect(
-      s.service.revoke(second, "reason", "op"),
-    ).rejects.toMatchObject({ status: 404 });
-  });
-  // Covers: S_ADMIN_ENVIRONMENT case=contract
-  it("binds manual storage to one environment and forwards usage to the composed repository", async () => {
-    const production = setup(),
-      sandbox = setup("sandbox", production);
-    const grant = await production.service.create(
-      await input(production),
-      "op",
-    );
-    expect((await sandbox.membership.snapshot("user")).planId).toBe("starter");
-    expect(await sandbox.grants.get(id)).toBeNull();
-    expect(
-      await sandbox.grants.revoke(id, {
-        createdAt: grant.createdAt,
-        createdBy: "op",
-        reason: "test",
-      }),
-    ).toBe(false);
-    await expect(
-      sandbox.grants.create(
-        grant,
-        await sandbox.grants.revision("user", grant.createdAt),
-      ),
-    ).rejects.toThrow("environment");
-    await sandbox.repository.claimUniqueUsage({
-      ownerSub: "user",
-      capability: "ai",
-      periodKey: "2026-09",
-      itemKey: "private-item",
-      limit: 2,
-      createdAt: grant.createdAt,
-    });
-    expect(await sandbox.repository.countUsage("user", "ai", "2026-09")).toBe(
-      1,
-    );
-    await sandbox.repository.releaseUsage(
-      "user",
-      "ai",
-      "2026-09",
-      "private-item",
-    );
-    expect(await sandbox.repository.countUsage("user", "ai", "2026-09")).toBe(
-      0,
-    );
-  });
-});
 function http(s = setup()) {
   const app = createAdmin({
     environment: "production",
@@ -338,118 +46,101 @@ function http(s = setup()) {
     });
   return { ...s, request };
 }
-describe("admin HTTP and privacy", () => {
-  // Covers: S_ADMIN_CONCURRENCY case=contract
-  it("returns 409 for the losing concurrent HTTP grant", async () => {
-    const s = http();
-    const preview = { ...(await input(s)), environment: "production" };
-    const responses = await Promise.all([
-      s.request("/manual-grants", "POST", preview),
-      s.request("/manual-grants", "POST", {
-        ...preview,
-        id: second,
-        planId: "starter",
-      }),
-    ]);
-    expect(responses.map((r) => r.status).sort()).toEqual([201, 409]);
-    expect(await s.grants.list("user")).toHaveLength(1);
-  });
-  it("publishes its optional contract and accepts the independent grant fixture", async () => {
-    expect(adminOpenApi).toEqual(contract);
-    const s = http();
-    expect(
-      (await s.request("/manual-grants", "POST", fixture.createGrant)).status,
-    ).toBe(201);
-    expect((await s.request("/unknown/")).status).toBe(404);
-  });
+describe("provider-owned membership administration", () => {
   // Covers: S_ADMIN_ACCESS case=error_path
-  it("requires independent read and write privileges, CSRF origin, and fixed environment", async () => {
+  it("requires administrative access for reads and catalog writes", async () => {
     const s = http();
-    const value = { ...(await input(s)), environment: "production" };
-    for (const method of ["GET", "POST"]) {
-      const r = await s.request(
-        method === "GET" ? "/users?query=user" : "/manual-grants",
-        method,
-        method === "POST" ? value : undefined,
-        { Authorization: "appbase:read appbase:write" },
-      );
-      expect(r.status).toBe(403);
-    }
-    expect(
-      (await s.request("/context", "GET", undefined, { Authorization: "" }))
-        .status,
-    ).toBe(401);
     expect(
       (
-        await s.request("/manual-grants", "POST", value, {
+        await s.request("/users?query=user", "GET", undefined, {
+          Authorization: "appbase:read",
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await s.request("/catalog", "PUT", catalog, {
           Authorization: "admin:read",
         })
       ).status,
     ).toBe(403);
     expect(
       (
-        await s.request("/manual-grants", "POST", value, {
-          Origin: "https://evil.test",
+        await s.request("/catalog", "PUT", catalog, {
+          Origin: "https://foreign.test",
         })
       ).status,
     ).toBe(403);
+  });
+  // Covers: S_ADMIN_UI case=contract
+  it("serves its published contract and static UI without leaking credentials", async () => {
+    expect(adminOpenApi).toEqual(contract);
+    const s = http();
+    for (const path of ["/", "/admin/", "/admin.js", "/admin.css"]) {
+      const response = await s.request(path);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Cache-Control")).toContain("no-store");
+      expect(response.headers.get("Content-Security-Policy")).toContain(
+        "frame-ancestors 'none'",
+      );
+    }
     expect(
       (
-        await s.request("/manual-grants", "POST", {
-          ...value,
-          environment: "sandbox",
+        await s.request("/users?query=user", "GET", undefined, {
+          Authorization: "",
+        })
+      ).status,
+    ).toBe(401);
+    expect((await s.request("/users?query=missing")).status).toBe(404);
+    expect((await s.request("/users?query=")).status).toBe(422);
+    expect(
+      (
+        await s.request("/catalog", "PUT", catalog, {
+          "Admin-Environment": "sandbox",
+          "If-Match": '"0"',
         })
       ).status,
     ).toBe(409);
-    expect(await s.grants.list("user")).toEqual([]);
   });
-  // Covers: S_ADMIN_UI case=happy_path
-  // Covers: S_ADMIN_ENVIRONMENT case=error_path
-  it("refreshes effective membership and audit history after grant/revocation", async () => {
+  it("preserves previously issued legacy membership and default plans", async () => {
+    const s = setup();
+    expect((await s.service.user("user")).source).toBe("default");
+    await new D1MembershipRepository(s.db).putGrant({
+      id: "legacy",
+      ownerSub: "user",
+      planId: "team",
+      source: "admin",
+      startsAt: "2026-09-01T00:00:00.000Z",
+      endsAt: null,
+      createdAt: "2026-09-01T00:00:00.000Z",
+    });
+    expect((await s.service.user("user")).source).toBe("legacy");
+    expect((await s.service.user("user")).membership.planId).toBe("team");
+    const sandbox = setup("sandbox", s);
+    expect((await sandbox.service.user("user")).membership.planId).toBe(
+      "starter",
+    );
+  });
+  // Covers: S_ADMIN_PROVIDER_OWNERSHIP case=contract
+  it("removes manual grant APIs and reads RevenueCat membership without overrides", async () => {
     const s = http();
     await s.billing.synchronize("user");
-    const response = await s.request("/manual-grants", "POST", {
-      ...(await input(s)),
-      environment: "production",
+    expect((await s.service.user("user")).membership.planId).toBe("studio");
+    expect((await s.service.user("user")).source).toBe("subscription");
+    await expect(s.service.user("missing")).rejects.toMatchObject({
+      status: 404,
     });
-    expect(response.status).toBe(201);
-    expect(response.headers.get("Location")).toBe(
-      "https://example.test/admin/manual-grants/" + id,
+    for (const [method, path] of [
+      ["GET", "/manual-grants?ownerSub=user"],
+      ["POST", "/manual-grants"],
+      ["PUT", "/manual-grants/id/revocation"],
+    ]) {
+      expect((await s.request(path!, method!)).status).toBe(404);
+    }
+    expect(await (await s.request("/context")).json()).not.toHaveProperty(
+      "canGrant",
     );
-    const user = await (await s.request("/users?query=user")).json();
-    expect(user).toMatchObject({ membership: { planId: "team" } });
-    expect(JSON.stringify(user)).not.toContain("managementUrl");
-    expect((await s.request("/manual-grants/" + id)).status).toBe(200);
-    expect((await s.request("/manual-grants/" + second)).status).toBe(404);
-    expect(
-      (
-        await s.request("/manual-grants/" + id + "/revocation", "PUT", {
-          reason: "Completed",
-          environment: "production",
-        })
-      ).status,
-    ).toBe(200);
-    expect(await (await s.request("/users?query=user")).json()).toMatchObject({
-      membership: { planId: "studio" },
-    });
-    expect((await s.request("/users?query=unknown")).status).toBe(404);
-    expect((await s.request("/manual-grants", "POST", {})).status).toBe(422);
-    expect(
-      (await s.request("/manual-grants?ownerSub=user")).headers.get(
-        "Cache-Control",
-      ),
-    ).toContain("no-store");
-    const html = await s.request("/");
-    expect(await html.text()).toContain("Example Product");
-    expect(html.headers.get("Content-Security-Policy")).toContain(
-      "frame-ancestors 'none'",
-    );
-    expect((await s.request("/admin.js")).headers.get("Content-Type")).toBe(
-      "text/javascript",
-    );
-    expect((await s.request("/admin.css")).status).toBe(200);
   });
-  // Covers: S_ADMIN_CATALOG case=contract
   it("uses billing validation and ETag conflict protection for quota configuration", async () => {
     const s = http();
     const read = await s.request("/catalog");
@@ -493,6 +184,43 @@ describe("admin HTTP and privacy", () => {
         )
       ).status,
     ).toBe(422);
+  });
+});
+describe("manual grant retirement", () => {
+  it("refuses to delete existing grants and retires an empty store", () => {
+    const sql = new DatabaseSync(":memory:");
+    for (const name of [
+      "0001_appbase.sql",
+      "0003_billing.sql",
+      "0004_billing_environments.sql",
+      "0005_admin.sql",
+    ])
+      sql.exec(
+        readFileSync(new URL("../migrations/" + name, import.meta.url), "utf8"),
+      );
+    sql.exec(
+      "INSERT INTO appbase_admin_grants(environment,id,owner_sub,plan_id,starts_at,ends_at,reason,created_by,created_at,previous_plan_id,catalog_revision) VALUES ('production','fixture','user','studio','2026-01-01','2027-01-01','fixture','operator','2026-01-01','starter',0)",
+    );
+    const migration = readFileSync(
+      new URL("../migrations/0006_revenuecat_grants.sql", import.meta.url),
+      "utf8",
+    );
+    sql.exec("BEGIN");
+    expect(() => sql.exec(migration)).toThrow();
+    sql.exec("ROLLBACK");
+    expect(
+      sql.prepare("SELECT COUNT(*) AS n FROM appbase_admin_grants").get()?.n,
+    ).toBe(1);
+    sql.exec("DELETE FROM appbase_admin_grants");
+    sql.exec(migration);
+    expect(
+      sql
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE name='appbase_admin_grants'",
+        )
+        .get(),
+    ).toBeUndefined();
+    sql.close();
   });
 });
 describe("admin storage boundaries", () => {
@@ -539,60 +267,6 @@ describe("admin storage boundaries", () => {
     expect(await store.get("live", 1000)).toEqual(principal);
     await store.put("fresh", principal, 3000);
     expect(await store.get("fresh", 1000)).toEqual(principal);
-  });
-  // Covers: S_ADMIN_ENVIRONMENT case=happy_path
-  it("composes real migrated environment repositories for reads, overrides and usage", async () => {
-    const { db } = sqlite();
-    const make = (env: "production" | "sandbox") =>
-      createD1AdminServices(
-        db,
-        env,
-        {
-          subscriber: async () => ({
-            observedAt: "2026-09-07T00:00:00.000Z",
-            managementUrl: null,
-            entitlements: [],
-          }),
-        },
-        catalog,
-        () => new Date("2026-09-07T00:00:00.000Z"),
-      );
-    const p = make("production"),
-      s = make("sandbox");
-    const pId = await p.billing.repository.identity("user"),
-      sId = await s.billing.repository.identity("user");
-    expect(pId).not.toBe(sId);
-    const before = (await p.admin.user(pId)).membership;
-    await p.admin.create(
-      {
-        id,
-        ownerSub: "user",
-        planId: "team",
-        endsAt: "2026-09-10T00:00:00.000Z",
-        reason: "Cross environment fixture",
-        expectedMembership: before,
-        expectedCatalogRevision: 0,
-        expectedRevision: (await p.admin.user("user")).expectedRevision,
-      },
-      "operator",
-    );
-    expect(
-      (await make("production").admin.user("user")).membership.planId,
-    ).toBe("team");
-    expect((await s.admin.user(sId)).membership.planId).toBe("starter");
-    await expect(s.admin.user(pId)).rejects.toMatchObject({ status: 404 });
-    await s.membership.claimUnique("user", "ai", "private-item");
-    expect(
-      (await make("production").membership.snapshot("user")).capabilities.ai
-        ?.used,
-    ).toBe(0);
-    expect(
-      (await make("sandbox").membership.snapshot("user")).capabilities.ai?.used,
-    ).toBe(1);
-    await p.admin.revoke(id, "Finished", "operator");
-    expect((await make("production").membership.snapshot("user")).planId).toBe(
-      "starter",
-    );
   });
   it("queries only operational identity fields under the agreed environment schema", async () => {
     const { db, sqlite: sql } = sqlite();
