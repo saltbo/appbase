@@ -10,14 +10,14 @@ export const adminHtml = (
   environments?: readonly { name: string; url: string }[],
 ) =>
   `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(product)} administration</title><link rel="stylesheet" href="${escape(base)}/admin.css"><script defer src="${escape(base)}/admin.js"></script></head><body data-base="${escape(base)}" data-environments="${escape(JSON.stringify(environments ?? []))}"><header><a class="brand" href="${escape(base)}">${escape(product)}<span>Admin</span></a><div class="header-tools"><label class="sr-only" for="environment">Environment</label><select id="environment" aria-label="Environment"></select><a href="${escape(base)}/session/logout">Sign out</a></div></header><div class="shell"><aside><span class="eyebrow">WORKSPACE</span><nav aria-label="Administration"><button id="customers-nav" class="nav-item" type="button">Customers</button><button id="plans-nav" class="nav-item" type="button" hidden>Plans & quotas</button></nav><p class="sidebar-note">Membership data is synchronized with RevenueCat.</p></aside><main><p id="status" role="status">Loading administration…</p><section id="content" aria-label="Administration content"></section></main></div></body></html>`;
-export const adminStyle = `:root{--ink:#252330;--muted:#696575;--line:#e8e6ed;--paper:#fff;--wash:#faf9fc;--accent:#6850b8;--accent-wash:#f0ecfa;--danger:#b42332;--radius:12px}*{box-sizing:border-box}body{margin:0;background:var(--wash);color:var(--ink);font:14px/1.55 system-ui,sans-serif}header{height:76px;background:var(--paper);border-bottom:1px solid var(--line);padding:0 32px;display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{font-size:22px;font-weight:750;color:var(--ink);text-decoration:none;letter-spacing:-.5px}.brand span{font-size:12px;font-weight:500;letter-spacing:0;color:var(--muted);border-left:1px solid var(--line);padding-left:12px;margin-left:12px}.header-tools{flex-shrink:0;display:flex;align-items:center;gap:20px}.header-tools a{white-space:nowrap}.header-tools select{width:auto;margin:0;background:var(--accent-wash);color:var(--accent);border-color:transparent;font-weight:650}.shell{display:grid;grid-template-columns:208px minmax(0,1fr);max-width:1600px;margin:auto;min-height:calc(100vh - 76px)}aside{padding:30px 16px;border-right:1px solid var(--line);background:var(--paper)}.eyebrow{font-size:10px;letter-spacing:.12em;color:var(--muted);padding:0 12px}.nav-item{display:block;width:100%;text-align:left;margin:8px 0;background:transparent;color:var(--muted);border-color:transparent}.nav-item[aria-current=page]{background:var(--accent-wash);color:var(--accent);font-weight:650}.sidebar-note{padding:18px 12px;font-size:12px;color:var(--muted)}main{min-width:0;padding:22px 36px 48px}h1{font-size:28px;letter-spacing:-.7px;margin:0}h2{font-size:24px;margin:12px 0}h3{font-size:16px}p{margin:8px 0}a{color:var(--accent)}button,input,select,textarea{font:inherit;min-height:42px;border:1px solid var(--line);border-radius:8px;padding:9px 13px}button{cursor:pointer;background:var(--accent);color:white;font-weight:600}button.secondary{background:var(--paper);color:var(--ink)}button:disabled{opacity:.45;cursor:default}button:hover:enabled{filter:brightness(.96)}:focus-visible{outline:3px solid var(--accent);outline-offset:3px}input,textarea,select{background:var(--paper);color:var(--ink)}input,select,textarea{width:100%;max-width:700px}label{display:block;margin:16px 0 5px}input[type=checkbox]{width:auto;min-height:auto;accent-color:var(--accent)}fieldset{min-width:0}textarea{min-height:110px}.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin:20px 0}.page-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:8px 0 24px}.muted,small{color:var(--muted)}.search{display:flex;gap:10px;align-items:center;max-width:620px}.search input{min-width:0}.list-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);margin-top:20px;overflow:hidden}.table{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left}th{color:var(--muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;background:var(--wash)}th,td{padding:16px 20px;border-bottom:1px solid var(--line)}td{vertical-align:middle}.customer-link{padding:0;min-height:30px;color:var(--accent);background:transparent;border:0;text-align:left;font:inherit}.id{font:12px/1.6 ui-monospace,monospace;overflow-wrap:anywhere}.payment-id{color:var(--muted);font-size:11px}.badge{display:inline-block;padding:4px 10px;border-radius:20px;font-size:12px;background:var(--wash);color:var(--muted);white-space:nowrap}.badge.paid{background:var(--accent-wash);color:var(--accent)}.pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;color:var(--muted);font-size:12px}.actions{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}.pagination .actions{margin:0}.empty{text-align:center;padding:52px 20px;color:var(--muted)}.empty h2{color:var(--ink);font-size:18px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.detail-grid dt{font-size:12px;color:var(--muted);margin-bottom:6px}.detail-grid dd{margin:0;overflow-wrap:anywhere}.back{margin-bottom:14px}#status{min-height:22px;color:var(--muted);font-size:12px;margin:0 0 12px}#status[data-error=true]{color:var(--danger)}code{overflow-wrap:anywhere}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}[hidden]{display:none!important}@media(max-width:850px){.shell{grid-template-columns:1fr}aside{padding:10px 20px;border-right:0;border-bottom:1px solid var(--line)}aside .eyebrow,.sidebar-note{display:none}nav{display:flex;gap:8px}.nav-item{width:auto;margin:0}main{padding:20px}header{padding:0 20px}.detail-grid{grid-template-columns:1fr}}@media(max-width:550px){header{height:auto;min-height:76px;padding:16px;gap:10px}.header-tools{gap:10px}.brand span{display:none}main{padding:16px}.page-heading{margin-bottom:18px}h1{font-size:25px}.desktop-only{display:none}th,td{padding:14px 12px}.pagination{padding:12px;flex-wrap:wrap}.card{padding:16px}.search button{white-space:nowrap}}`;
+export const adminStyle = `:root{--ink:#252330;--muted:#696575;--line:#e8e6ed;--paper:#fff;--wash:#faf9fc;--accent:#6850b8;--accent-wash:#f0ecfa;--danger:#b42332;--radius:12px}*{box-sizing:border-box}body{margin:0;background:var(--wash);color:var(--ink);font:14px/1.55 system-ui,sans-serif}header{height:76px;background:var(--paper);border-bottom:1px solid var(--line);padding:0 32px;display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{font-size:22px;font-weight:750;color:var(--ink);text-decoration:none;letter-spacing:-.5px}.brand span{font-size:12px;font-weight:500;letter-spacing:0;color:var(--muted);border-left:1px solid var(--line);padding-left:12px;margin-left:12px}.header-tools{flex-shrink:0;display:flex;align-items:center;gap:20px}.header-tools a{white-space:nowrap}.header-tools select{width:auto;margin:0;background:var(--accent-wash);color:var(--accent);border-color:transparent;font-weight:650}.shell{display:grid;grid-template-columns:208px minmax(0,1fr);max-width:1600px;margin:auto;min-height:calc(100vh - 76px)}aside{padding:30px 16px;border-right:1px solid var(--line);background:var(--paper)}.eyebrow{font-size:10px;letter-spacing:.12em;color:var(--muted);padding:0 12px}.nav-item{display:block;width:100%;text-align:left;margin:8px 0;background:transparent;color:var(--muted);border-color:transparent}.nav-item[aria-current=page]{background:var(--accent-wash);color:var(--accent);font-weight:650}.sidebar-note{padding:18px 12px;font-size:12px;color:var(--muted)}main{min-width:0;padding:22px 36px 48px}h1{font-size:28px;letter-spacing:-.7px;margin:0}h2{font-size:24px;margin:12px 0}h3{font-size:16px}p{margin:8px 0}a{color:var(--accent)}button,input,select,textarea{font:inherit;min-height:42px;border:1px solid var(--line);border-radius:8px;padding:9px 13px}button{cursor:pointer;background:var(--accent);color:white;font-weight:600}button.secondary{background:var(--paper);color:var(--ink)}button:disabled{opacity:.45;cursor:default}button:hover:enabled{filter:brightness(.96)}:focus-visible{outline:3px solid var(--accent);outline-offset:3px}input,textarea,select{background:var(--paper);color:var(--ink)}input,select,textarea{width:100%;max-width:700px}label{display:block;margin:16px 0 5px}input[type=checkbox]{width:auto;min-height:auto;accent-color:var(--accent)}fieldset{min-width:0}textarea{min-height:110px}.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin:20px 0}.page-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:8px 0 24px}.muted,small{color:var(--muted)}.search{display:flex;gap:10px;align-items:center;max-width:620px}.search input{min-width:0}.list-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);margin-top:20px;overflow:hidden}.table{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left}th{color:var(--muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;background:var(--wash)}th,td{padding:16px 20px;border-bottom:1px solid var(--line)}td{vertical-align:middle}.customer-link{padding:0;min-height:30px;color:var(--accent);background:transparent;border:0;text-align:left;font:inherit}.id{font:12px/1.6 ui-monospace,monospace;overflow-wrap:anywhere}.payment-id{color:var(--muted);font-size:11px}.badge{display:inline-block;padding:4px 10px;border-radius:20px;font-size:12px;background:var(--wash);color:var(--muted);white-space:nowrap}.badge.paid{background:var(--accent-wash);color:var(--accent)}.pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;color:var(--muted);font-size:12px}.actions{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}.pagination .actions{margin:0}.empty{text-align:center;padding:52px 20px;color:var(--muted)}.empty h2{color:var(--ink);font-size:18px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.detail-grid dt{font-size:12px;color:var(--muted);margin-bottom:6px}.detail-grid dd{margin:0;overflow-wrap:anywhere}.back{margin-bottom:14px}#status{min-height:22px;color:var(--muted);font-size:12px;margin:0 0 12px}#status[data-error=true]{color:var(--danger)}code{overflow-wrap:anywhere}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}[hidden]{display:none!important}@media(max-width:850px){.shell{grid-template-columns:1fr;grid-template-rows:auto 1fr}aside{padding:10px 20px;border-right:0;border-bottom:1px solid var(--line)}aside .eyebrow,.sidebar-note{display:none}nav{display:flex;gap:8px}.nav-item{width:auto;margin:0}main{padding:20px}header{padding:0 20px}.detail-grid{grid-template-columns:1fr}}@media(max-width:550px){header{height:auto;min-height:76px;padding:16px;gap:10px}.header-tools{gap:10px}.brand span{display:none}main{padding:16px}.page-heading{margin-bottom:18px}h1{font-size:25px}.desktop-only{display:none}th,td{padding:14px 12px}.pagination{padding:12px;flex-wrap:wrap}.card{padding:16px}.search button{white-space:nowrap}}`;
 
 // Dynamic values are escaped; environment data never enters executable source.
 export const adminScript = String.raw`
 const base = document.body.dataset.base;
 const content = document.querySelector("#content"), status = document.querySelector("#status");
 const selector = document.querySelector("#environment");
-let environments = JSON.parse(document.body.dataset.environments), context, active, selected, page = 1, query = "";
+let environments = JSON.parse(document.body.dataset.environments), context, active, selected, page = 1, query = "", section = "customers";
 const esc = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 const date = value => value ? new Date(value).toLocaleString(undefined, {dateStyle:"medium", timeStyle:"short"}) : "Not synchronized";
 const planName = p => p.displayName || p.id;
@@ -59,6 +59,7 @@ async function loadCatalog(scope) {
   return { catalog: result.data, etag: '"' + revision + '"' };
 }
 function nav(name) {
+  section = name;
   for (const id of ["customers", "plans"]) document.getElementById(id + "-nav").setAttribute("aria-current", id === name ? "page" : "false");
 }
 async function home() {
@@ -91,123 +92,44 @@ async function showUser(query) {
     message("");
   } catch(e) { report(e,scope); }
 }
-async function configure() {
+async function showPlans() {
   const scope = view(); nav("plans");
   try {
-    const { catalog, etag } = await loadCatalog(scope);
+    const {catalog} = await loadCatalog(scope);
     const plans = [catalog.freePlan, ...catalog.plans];
-    content.innerHTML =
-      '<button class="secondary" id="cancel">Back to customers</button><h2>Plans and quotas</h2><p>Names and limits apply on the next membership read. Leave a limit blank for unlimited. Prices remain store-owned.</p><form id="catalog-form">' +
-      plans
-        .map(
-          (p, i) =>
-            '<fieldset class="card"><legend>' +
-            esc(planName(p)) +
-            "</legend><p>Plan ID: <code>" +
-            esc(p.id) +
-            '</code></p><label for="name-' +
-            i +
-            '">Display name for ' +
-            esc(p.id) +
-            '</label><input id="name-' +
-            i +
-            '" name="name-' +
-            i +
-            '" maxlength="100" value="' +
-            esc(p.displayName || p.id) +
-            '">' +
-            Object.entries(p.capabilities)
-              .map(
-                ([key, v], j) =>
-                  '<label for="limit-' +
-                  i +
-                  "-" +
-                  j +
-                  '">' +
-                  esc(p.id) +
-                  " / " +
-                  esc(key) +
-                  " limit (" +
-                  esc(v.period) +
-                  ')</label><input id="limit-' +
-                  i +
-                  "-" +
-                  j +
-                  '" name="limit-' +
-                  i +
-                  "-" +
-                  j +
-                  '" type="number" min="0" step="1" value="' +
-                  esc(v.limit === null ? "" : v.limit) +
-                  '">',
-              )
-              .join("") +
-            "</fieldset>",
-        )
-        .join("") +
-      "<h3>Subscription mapping</h3>" +
-      Object.entries(catalog.entitlementPlans)
-        .map(
-          ([key, value], i) =>
-            '<label for="mapping-' +
-            i +
-            '">Entitlement ' +
-            esc(key) +
-            '</label><select id="mapping-' +
-            i +
-            '" name="mapping-' +
-            i +
-            '">' +
-            catalog.plans
-              .map(
-                (p) =>
-                  '<option value="' +
-                  esc(p.id) +
-                  '"' +
-                  (value === p.id ? " selected" : "") +
-                  ">" +
-                  esc(planName(p)) +
-                  "</option>",
-              )
-              .join("") +
-            "</select>",
-        )
-        .join("") +
-      '<label><input type="checkbox" name="grace"' +
-      (catalog.honorGracePeriod ? " checked" : "") +
-      '> Honor provider grace periods</label><label for="confirm">Type ' +
-      esc(context.environment) +
-      ' to confirm</label><input id="confirm" name="environment" required><div class="actions"><button type="submit">Save catalog</button></div></form>';
-    document.getElementById("cancel").onclick = home;
-    bindForm("catalog-form", scope, async (f) => {
+    content.innerHTML = '<div class="page-heading"><div><h1>Plans</h1><p class="muted">Membership names and benefit limits.</p></div>' + (context.canConfigure ? '<button class="secondary" id="mapping">Subscription settings</button>' : '') + '</div><div class="list-card"><div class="table"><table><thead><tr><th>Plan</th><th>Type</th><th class="desktop-only">Benefits</th>' + (context.canConfigure ? '<th><span class="sr-only">Actions</span></th>' : '') + '</tr></thead><tbody>' + plans.map((p,i) => '<tr><td><strong>' + esc(planName(p)) + '</strong><div class="id muted">' + esc(p.id) + '</div></td><td><span class="badge' + (i ? ' paid' : '') + '">' + (i ? 'Paid' : 'Free') + '</span></td><td class="desktop-only">' + Object.keys(p.capabilities).length + ' benefits</td>' + (context.canConfigure ? '<td><button class="secondary" data-edit="' + i + '" aria-label="Edit ' + esc(planName(p)) + '">Edit</button></td>' : '') + '</tr>').join('') + '</tbody></table></div><div class="pagination"><span>' + plans.length + ' plans</span><span>Prices and offers are managed in RevenueCat and the store.</span></div></div>';
+    content.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => configure(plans[Number(b.dataset.edit)].id));
+    document.getElementById("mapping")?.addEventListener("click", () => configure(null));
+    message("");
+  } catch(e) { report(e, scope); }
+}
+async function configure(planId) {
+  const scope = view(); nav("plans");
+  try {
+    const {catalog, etag} = await loadCatalog(scope);
+    const plans = [catalog.freePlan, ...catalog.plans];
+    const plan = planId === null ? null : plans.find(p => p.id === planId);
+    if (planId !== null && !plan) throw new Error("This plan is no longer available. Return to the plan list.");
+    const fields = plan ? '<div class="card"><p class="muted">Plan ID: <code>' + esc(plan.id) + '</code></p><label for="plan-name">Display name for ' + esc(plan.id) + '</label><input id="plan-name" name="name" required maxlength="100" value="' + esc(planName(plan)) + '"><h3>Benefit limits</h3><p class="muted">Leave a limit blank for unlimited.</p>' + Object.entries(plan.capabilities).map(([key,v],i) => '<label for="limit-' + i + '">' + esc(plan.id + ' / ' + key + ' limit (' + v.period + ')') + '</label><input id="limit-' + i + '" name="limit-' + i + '" type="number" min="0" step="1" value="' + esc(v.limit === null ? '' : v.limit) + '">').join('') + '</div>' : '<div class="card"><h3>Subscription mapping</h3><p class="muted">Map RevenueCat entitlements to membership plans.</p>' + Object.entries(catalog.entitlementPlans).map(([key,value],i) => '<label for="mapping-' + i + '">Entitlement ' + esc(key) + '</label><select id="mapping-' + i + '" name="mapping-' + i + '">' + catalog.plans.map(p => '<option value="' + esc(p.id) + '"' + (p.id === value ? ' selected' : '') + '>' + esc(planName(p)) + '</option>').join('') + '</select>').join('') + '<label><input type="checkbox" name="grace"' + (catalog.honorGracePeriod ? ' checked' : '') + '> Honor provider grace periods</label></div>';
+    content.innerHTML = '<button class="secondary back" id="cancel">Back to plans</button><h1>' + esc(plan ? 'Edit ' + planName(plan) : 'Subscription settings') + '</h1><form id="catalog-form">' + fields + '<label for="confirm">Type ' + esc(scope.environment) + ' to confirm</label><input id="confirm" name="environment" required><div class="actions"><button type="submit">Save changes</button></div></form>';
+    document.getElementById("cancel").onclick = showPlans;
+    bindForm("catalog-form", scope, async f => {
       const updated = structuredClone(catalog);
-      [updated.freePlan, ...updated.plans].forEach((p, i) => {
-        p.displayName = f.get("name-" + i);
-        Object.entries(p.capabilities).forEach(([key, v], j) => {
-          const value = f.get("limit-" + i + "-" + j);
-          v.limit = value === "" ? null : Number(value);
-        });
-      });
-      Object.keys(updated.entitlementPlans).forEach((key, i) => {
-        updated.entitlementPlans[key] = f.get("mapping-" + i);
-      });
-      updated.honorGracePeriod = f.has("grace");
-      await api(scope, "/catalog", {
-        method: "PUT",
-        headers: {
-          "If-Match": etag,
-          "Admin-Environment": f.get("environment"),
-        },
-        body: JSON.stringify(updated),
-      });
-      if (scope !== active) return;
-      await configure();
-      message("Catalog saved.");
+      if (plan) {
+        const edited = [updated.freePlan,...updated.plans].find(p => p.id === planId);
+        edited.displayName = String(f.get("name"));
+        Object.values(edited.capabilities).forEach((v,i) => { const value = f.get("limit-" + i); v.limit = value === "" ? null : Number(value); });
+      } else {
+        Object.keys(updated.entitlementPlans).forEach((key,i) => { updated.entitlementPlans[key] = f.get("mapping-" + i); });
+        updated.honorGracePeriod = f.has("grace");
+      }
+      await api(scope, "/catalog", {method:"PUT",headers:{"If-Match":etag,"Admin-Environment":f.get("environment")},body:JSON.stringify(updated)});
+      const shown = await configure(planId);
+      if (shown === active) message("Changes saved.");
     });
     message("");
-  } catch (e) {
-    report(e, scope);
-  }
+    return scope;
+  } catch(e) { report(e, scope); }
 }
 
 async function start() {
@@ -216,8 +138,8 @@ async function start() {
   document.getElementById("plans-nav").hidden = true;
   try {
     context = (await api(scope, "/context")).data;
-    document.getElementById("plans-nav").hidden = !context.canConfigure;
-    await home();
+    document.getElementById("plans-nav").hidden = false;
+    await (section === "plans" ? showPlans() : home());
   } catch(e) { report(e, scope); }
 }
 if (!environments.length) environments = [{name:"production",url:base}];
@@ -225,6 +147,6 @@ selected = environments[0];
 selector.innerHTML = environments.map(e => '<option value="' + esc(e.name) + '">' + esc(e.name === 'production' ? 'Production' : 'Sandbox') + '</option>').join('');
 selector.onchange = () => { selected = environments.find(e => e.name === selector.value); page = 1; query = ""; start(); };
 document.getElementById("customers-nav").onclick = home;
-document.getElementById("plans-nav").onclick = configure;
+document.getElementById("plans-nav").onclick = showPlans;
 start();
 `;
