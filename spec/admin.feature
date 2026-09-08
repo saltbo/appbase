@@ -73,3 +73,13 @@ Feature: Optional product administration
     And requests use the selected environment API path
     And old responses cannot replace the new environment view
     And write requests retain the environment in which their form was opened
+
+  # Acceptance: S_ADMIN_PLAN_LIST status=implemented layers=browser
+  Scenario: Browse plans before editing one plan
+    Given an operator opens plans in the selected environment
+    Then a list shows the configured free and paid plans
+    And no edit form appears in the list
+    When the operator edits one plan
+    Then only that plan's name and quotas can change
+    And subscription mapping has a separate configuration form
+    And switching environment returns to that environment's plan list

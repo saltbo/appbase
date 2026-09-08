@@ -62,10 +62,10 @@ for (const environment of ["production", "sandbox"]) {
   const membership = new MembershipService(underlying, {...catalog, loadCatalog: async () => (await billing.catalog()).catalog});
   services[environment] = new AdminService(environment, new D1AdminUserDirectory(db,environment),membership,billing,underlying);
 }
-let allowed = true;
+let allowed = true, configureAllowed = true;
 const environments = [{name:"production",url:"https://admin.example.test/admin/api"},{name:"sandbox",url:"https://admin.example.test/sandbox/admin/api"}];
 const app = new Hono().route("/admin",createAdminPage({url:"https://admin.example.test/admin",productName:"Example Product",environments}));
-for(const environment of environments) app.route(new URL(environment.url).pathname,createAdmin({environment:environment.name,serveUi:false,productName:"Example Product",url:environment.url,environments,service:()=>services[environment.name],authenticate:async()=>({sub:"operator",scopes:[]}),authorize:()=>allowed}));
+for(const environment of environments) app.route(new URL(environment.url).pathname,createAdmin({environment:environment.name,serveUi:false,productName:"Example Product",url:environment.url,environments,service:()=>services[environment.name],authenticate:async()=>({sub:"operator",scopes:[]}),authorize:(_p, capability)=>allowed && (capability !== "billing:configure" || configureAllowed)}));
 const browser = await chromium.launch({
   headless: true,
   ...(process.env.APPBASE_CHROME_PATH
@@ -125,13 +125,19 @@ try {
   await page.getByRole("heading", {name:"Customer details"}).waitFor();
   assert.equal(await page.getByRole("button",{name:"Grant membership"}).count(),0);
   await page.getByRole("button", {name:"Plans & quotas",exact:true}).click();
+  // Covers: S_ADMIN_PLAN_LIST case=happy_path
+  await page.getByRole("heading", {name:"Plans",exact:true}).waitFor();
+  assert.equal(await page.locator("form").count(), 0);
+  await page.screenshot({path:"/tmp/appbase-admin-plans-desktop.png",fullPage:true});
+  await page.getByRole("button",{name:"Edit reader",exact:true}).click();
   await page.getByLabel("reader / ai limit (utc_month)").waitFor();
+  assert.equal(await page.getByLabel("Display name for studio").count(), 0);
   assert.equal(await page.getByRole("status").textContent(), "");
   await page.getByLabel("reader / ai limit (utc_month)").fill("3");
   await page.getByLabel("Display name for reader").fill("Reader Essentials");
   await page.getByLabel("Type production to confirm").fill("production");
-  await page.getByRole("button", {name:"Save catalog"}).click();
-  await page.getByRole("status").filter({hasText:"Catalog saved"}).waitFor();
+  await page.getByRole("button", {name:"Save changes"}).click();
+  await page.getByRole("status").filter({hasText:"Changes saved"}).waitFor();
   assert.equal((await services.production.membership.snapshot("production-customer-24")).capabilities.ai.limit,3);
   assert.equal((await services.sandbox.membership.snapshot("sandbox-customer-24")).capabilities.ai.limit,2);
   // A save dispatched before a switch stays in its original environment.
@@ -139,9 +145,13 @@ try {
   await page.getByLabel("Type production to confirm").fill("production");
   delayWrite = true;
   const writing = new Promise(resolve => {writeStarted=resolve;});
-  await page.getByRole("button", {name:"Save catalog"}).click();
+  await page.getByRole("button", {name:"Save changes"}).click();
   await writing;
   await page.getByLabel("Environment",{exact:true}).selectOption("sandbox");
+  await page.getByRole("heading", {name:"Plans",exact:true}).waitFor();
+  await page.getByRole("button", {name:"Edit reader",exact:true}).waitFor();
+  assert.equal(await page.locator("form").count(), 0);
+  await page.getByRole("button",{name:"Customers",exact:true}).click();
   await page.getByRole("button",{name:"sandbox-customer-00",exact:true}).waitFor();
   releaseWrite(); delayWrite = false;
   assert.equal((await services.production.membership.snapshot("production-customer-24")).capabilities.ai.limit,4);
@@ -165,6 +175,28 @@ try {
   await page.setViewportSize({width:375,height:812});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.screenshot({path:"/tmp/appbase-admin-customers-mobile.png",fullPage:true});
+  await page.getByRole("button", {name:"Plans & quotas",exact:true}).click();
+  await page.getByRole("heading", {name:"Plans",exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.screenshot({path:"/tmp/appbase-admin-plans-mobile.png",fullPage:true});
+  await page.getByRole("button",{name:"Subscription settings",exact:true}).click();
+  await page.getByLabel("Entitlement premium").waitFor();
+  assert.equal(await page.getByLabel("Display name for reader").count(),0);
+  await page.getByLabel("Honor provider grace periods").uncheck();
+  await page.getByLabel("Type sandbox to confirm").fill("sandbox");
+  await page.getByRole("button",{name:"Save changes"}).click();
+  await page.getByRole("status").filter({hasText:"Changes saved"}).waitFor();
+  assert.equal((await services.sandbox.billing.catalog()).catalog.honorGracePeriod,false);
+  assert.equal((await services.production.billing.catalog()).catalog.honorGracePeriod,true);
+  assert.deepEqual((await services.production.billing.catalog()).catalog.plans,catalog.plans);
+  // Covers: S_ADMIN_PLAN_LIST case=error_path
+  configureAllowed=false;
+  await page.reload();
+  await page.getByRole("heading", {name:"Customers",exact:true}).waitFor();
+  await page.getByRole("button", {name:"Plans & quotas",exact:true}).click();
+  await page.getByRole("heading", {name:"Plans",exact:true}).waitFor();
+  assert.equal(await page.getByRole("button",{name:/^Edit /}).count(),0);
+  assert.equal(await page.getByRole("button",{name:"Subscription settings",exact:true}).count(),0);
   allowed=false;
   await page.reload();
   await page.getByRole("status").filter({hasText:"do not have access"}).waitFor();

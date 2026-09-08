@@ -1,6 +1,6 @@
 {
   "name": "@saltbo/appbase-server",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Cloudflare-native server framework for AppBase local-first synchronization",
   "type": "module",
   "files": [

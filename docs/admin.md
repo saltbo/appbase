@@ -31,7 +31,12 @@ The stack remains TypeScript, Hono and D1. The UI is a small same-origin HTML/JS
 module with native controls; no separate application framework or build pipeline.
 The product supplies its name, catalog, authorization policy and OIDC registration.
 UI uses remote displayName where present, otherwise the stable plan id.
-The UI edits existing plans, limits and existing entitlement mappings. Adding a
+The Plans page lists configured free and paid plans before any form is opened.
+Read-only operators can browse this list. Authorized operators edit one plan’s
+name and limits on a secondary page; subscription mappings and grace policy
+have a separate settings page. Environment switching returns to the selected
+environment’s list, discarding the old editor. Catalog writes retain ETag conflict
+protection and preserve fields outside the selected edit. Adding a
 new tier or entitlement mapping remains available through the existing catalog
 API; sale/retirement and store prices remain provider-owned.
 
