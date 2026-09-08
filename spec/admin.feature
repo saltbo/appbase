@@ -58,3 +58,11 @@ Feature: Optional product administration
     When the administration callback exchanges its authorization code
     Then it uses exactly the configured authentication method
     And provider credentials remain on the server
+
+  # Acceptance: S_ADMIN_D1_RUNTIME status=implemented layers=unit
+  Scenario: Preserve writes when D1 counts audit triggers
+    Given D1 includes revision trigger writes in statement change counts
+    When membership usage, subscription state, catalog or manual grants change
+    Then successful conditional writes are reported as successful
+    And rejected conditional writes remain conflicts
+    And preview boundaries fit the D1 compound query limit

@@ -17,3 +17,13 @@ and [API validation routines](https://github.com/panva/oauth4webapi/tree/main/do
 Playwright is a development-only dependency for actual DOM, CSP and responsive
 browser acceptance. It is never imported into the Worker or shipped to clients.
 The acceptance runner can reuse a system Chromium to avoid redundant downloads.
+
+## D1 administration runtime acceptance
+
+The server development dependencies include Miniflare and Wrangler at the same
+versions as the Worker template. Miniflare runs real Workerd D1 SQL and change
+metadata in the ordinary server test gate; Wrangler supplies the migration SQL
+splitter so trigger bodies are not parsed with a handwritten fixture parser.
+Neither package enters the published runtime dependencies. Tests prove that
+trigger-counted successful writes and zero-change stale writes stay distinct,
+and that the atomic preview query fits the D1 compound SELECT limit.

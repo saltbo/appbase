@@ -139,7 +139,7 @@ export class D1MembershipRepository implements MembershipRepository {
       .first<{ found: number }>();
     return {
       allowed: result.success && existing !== null,
-      created: result.meta.changes === 1,
+      created: result.meta.changes > 0,
       used,
     };
   }

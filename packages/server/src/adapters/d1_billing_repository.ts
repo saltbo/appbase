@@ -43,7 +43,7 @@ export class D1BillingRepository implements BillingRepository {
             )
             .bind(JSON.stringify(catalog), this.environment, expectedRevision)
             .run();
-    return result.meta.changes === 1;
+    return result.meta.changes > 0;
   }
   async identity(ownerSub: string): Promise<string> {
     await this.db
@@ -98,7 +98,7 @@ export class D1BillingRepository implements BillingRepository {
         state.observedAt,
       )
       .run();
-    return result.meta.changes === 1;
+    return result.meta.changes > 0;
   }
   async state(ownerSub: string): Promise<BillingState | null> {
     const row = await this.db

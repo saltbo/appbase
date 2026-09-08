@@ -58,13 +58,13 @@ export class D1AdminRepository implements AdminGrantRepository {
       COALESCE((SELECT revision FROM appbase_admin_user_revisions WHERE environment=?1 AND owner_sub=?2),0) AS user_revision,
       COALESCE((SELECT revision FROM appbase_admin_catalog_revisions WHERE environment=?1),0) AS catalog_revision,
       (SELECT MIN(boundary) FROM (
-        SELECT starts_at AS boundary FROM appbase_admin_grants WHERE environment=?1 AND owner_sub=?2 AND revoked_at IS NULL
-        UNION ALL SELECT ends_at FROM appbase_admin_grants WHERE environment=?1 AND owner_sub=?2 AND revoked_at IS NULL
-        UNION ALL SELECT starts_at FROM appbase_membership_grants WHERE environment=?1 AND owner_sub=?2
-        UNION ALL SELECT ends_at FROM appbase_membership_grants WHERE environment=?1 AND owner_sub=?2
-        UNION ALL SELECT json_extract(e.value,'$.startsAt') FROM appbase_billing_accounts a,json_each(a.state_json,'$.entitlements') e WHERE a.environment=?1 AND a.owner_sub=?2
-        UNION ALL SELECT json_extract(e.value,'$.expiresAt') FROM appbase_billing_accounts a,json_each(a.state_json,'$.entitlements') e WHERE a.environment=?1 AND a.owner_sub=?2
-        UNION ALL SELECT json_extract(e.value,'$.graceEndsAt') FROM appbase_billing_accounts a,json_each(a.state_json,'$.entitlements') e WHERE a.environment=?1 AND a.owner_sub=?2
+        SELECT boundary.value AS boundary FROM appbase_admin_grants g,json_each(json_array(g.starts_at,g.ends_at)) boundary
+          WHERE g.environment=?1 AND g.owner_sub=?2 AND g.revoked_at IS NULL
+        UNION ALL SELECT boundary.value FROM appbase_membership_grants g,json_each(json_array(g.starts_at,g.ends_at)) boundary
+          WHERE g.environment=?1 AND g.owner_sub=?2
+        UNION ALL SELECT boundary.value FROM appbase_billing_accounts a,json_each(a.state_json,'$.entitlements') e,
+          json_each(json_array(json_extract(e.value,'$.startsAt'),json_extract(e.value,'$.expiresAt'),json_extract(e.value,'$.graceEndsAt'))) boundary
+          WHERE a.environment=?1 AND a.owner_sub=?2
       ) WHERE boundary>?3) AS next_boundary`,
       )
       .bind(this.environment, ownerSub, now)
@@ -150,7 +150,8 @@ export class D1AdminRepository implements AdminGrantRepository {
         expected.validUntil,
       )
       .run();
-    return r.meta.changes === 1;
+    // D1 counts AFTER-trigger writes too; a rejected conditional write remains zero.
+    return r.meta.changes > 0;
   }
   async revoke(id: string, r: NonNullable<ManualGrant["revocation"]>) {
     const result = await this.db
@@ -159,6 +160,6 @@ export class D1AdminRepository implements AdminGrantRepository {
       )
       .bind(this.environment, id, r.createdBy, r.createdAt, r.reason)
       .run();
-    return result.meta.changes === 1;
+    return result.meta.changes > 0;
   }
 }

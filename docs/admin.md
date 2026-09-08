@@ -234,3 +234,9 @@ registration: `client_secret_basic` sends HTTP Basic authentication;
 `client_secret_post` sends form credentials (the compatibility default).
 Zigloo explicitly uses `client_secret_basic`. The adapter does not guess or
 retry with another authentication method after an exchange failure.
+
+D1 runtime compatibility: preview boundaries use three compound SELECT terms
+(the platform allows at most five). Successful single-row conditional writes
+check for a positive change count because D1 includes AFTER-trigger revision
+writes in `meta.changes`; zero still means the precondition did not match.
+This also applies to the underlying billing and membership repositories.
