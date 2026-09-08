@@ -204,6 +204,7 @@ async function configure() {
       await configure();
       message("Catalog saved.");
     });
+    message("");
   } catch (e) {
     report(e, scope);
   }
