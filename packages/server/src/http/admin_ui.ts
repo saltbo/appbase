@@ -117,9 +117,15 @@ function accessDetails(user) {
 }
 async function showPayments() {
   const scope = view(); nav("payments");
+  try {
+  const {catalog} = await loadCatalog(scope);
   const provider = context.paymentProvider;
   content.innerHTML = '<div class="page-heading"><div><h1>Payment settings</h1><p class="muted">Provider configuration for ' + esc(scope.environment) + '.</p></div></div>' + (provider ? '<div class="card"><h2>' + esc(provider.providerName) + '</h2><p class="id muted">' + esc(provider.providerId) + '</p><p>Configuration is supplied by the application deployment.</p><div class="table"><table><thead><tr><th>Setting</th><th>Configuration</th></tr></thead><tbody>' + provider.settings.map(setting => '<tr><td>' + esc(setting.name) + '</td><td>' + (setting.configured ? 'Configured' : 'Not configured') + '</td></tr>').join('') + '</tbody></table></div><p class="muted">These checks confirm configuration presence, not provider connectivity. Secret values are never displayed.</p><h3>Webhook endpoint</h3><p class="id">' + esc(provider.webhookPath ? new URL(provider.webhookPath,location.origin).href : 'Not configured') + '</p><p class="muted">Verified notifications determine the payment environment. The page selector does not reassign transactions.</p><div class="actions">' + dashboardLink() + '</div></div>' : '<div class="empty"><h2>No provider inspection configured</h2><p>The host application has not supplied payment configuration metadata.</p></div>');
+  content.innerHTML += '<div class="card"><h2>Grace period policy</h2><p>' + (catalog.honorGracePeriod ? 'Enabled' : 'Disabled') + '</p><p class="muted">When enabled, access continues until the provider’s grace-period end during renewal payment issues.</p>' + (context.canConfigure ? '<button class="secondary" id="edit-grace">Edit grace period policy</button>' : '') + '</div>';
+  document.getElementById("edit-grace")?.addEventListener("click",()=>configure(null));
   message("");
+  return scope;
+  } catch(error) { report(error,scope); }
 }
 async function showEvents(eventPage = 1) {
   const scope = view(); nav("events");
@@ -142,14 +148,26 @@ async function showUser(query) {
     message("");
   } catch(e) { report(e,scope); }
 }
+function entitlementFields(catalog, planId) {
+  const ids = Object.entries(catalog.entitlementPlans).filter(([,id]) => id === planId).map(([id]) => id);
+  return '<h3>Provider entitlements</h3>' + (ids.length ? ids.map((id,index) => '<label for="bound-' + index + '">Entitlement ' + esc(id) + '</label><select id="bound-' + index + '" name="bound-' + index + '">' + catalog.plans.map(plan => '<option value="' + esc(plan.id) + '"' + (plan.id === planId ? ' selected' : '') + '>' + esc(planName(plan)) + '</option>').join('') + '</select>').join('') + '<p class="muted">Changing a binding changes access for existing holders. Historical entitlement IDs cannot be deleted.</p>' : '') + '<label for="entitlement-id">' + (ids.length ? 'Additional entitlement ID' : 'Entitlement ID') + '</label><input id="entitlement-id" name="entitlement" maxlength="100"' + (ids.length ? '' : ' required') + '><p class="muted">Enter the exact entitlement ID from ' + esc(providerName()) + '. This saves the binding; it does not create an entitlement in the provider.</p>';
+}
+function bindEntitlement(catalog, planId, form) {
+  const id = String(form.get("entitlement") || "").trim();
+  if (!id) {
+    if (!Object.values(catalog.entitlementPlans).includes(planId)) throw new Error("An entitlement ID is required for this plan.");
+    return;
+  }
+  if (Object.hasOwn(catalog.entitlementPlans,id)) throw new Error("This entitlement is already bound to a plan.");
+  Object.defineProperty(catalog.entitlementPlans,id,{value:planId,enumerable:true,writable:true,configurable:true});
+}
 async function showPlans() {
   const scope = view(); nav("plans");
   try {
     const {catalog} = await loadCatalog(scope);
     const plans = [catalog.freePlan, ...catalog.plans];
-    content.innerHTML = '<div class="page-heading"><div><h1>Plans</h1><p class="muted">Membership names and benefit limits.</p></div>' + (context.canConfigure ? '<div class="actions"><button id="new-plan">Create plan</button><button class="secondary" id="mapping">Subscription settings</button></div>' : '') + '</div><div class="list-card"><div class="table"><table><thead><tr><th>Plan</th><th>Type</th><th class="desktop-only">Benefits</th>' + (context.canConfigure ? '<th><span class="sr-only">Actions</span></th>' : '') + '</tr></thead><tbody>' + plans.map((p,i) => '<tr><td><strong>' + esc(planName(p)) + '</strong><div class="id muted">' + esc(p.id) + '</div></td><td><span class="badge' + (i ? ' paid' : '') + '">' + (i ? 'Paid' : 'Free') + '</span></td><td class="desktop-only">' + Object.keys(p.capabilities).length + ' benefits</td>' + (context.canConfigure ? '<td><button class="secondary" data-edit="' + i + '" aria-label="Edit ' + esc(planName(p)) + '">Edit</button></td>' : '') + '</tr>').join('') + '</tbody></table></div><div class="pagination"><span>' + plans.length + ' plans</span><span>Prices and offers are managed in the payment provider and store.</span></div></div>';
+    content.innerHTML = '<div class="page-heading"><div><h1>Plans</h1><p class="muted">Membership names and benefit limits.</p></div>' + (context.canConfigure ? '<div class="actions"><button id="new-plan">Create plan</button></div>' : '') + '</div><div class="list-card"><div class="table"><table><thead><tr><th>Plan</th><th>Type / Priority</th><th>Entitlements</th><th class="desktop-only">Benefits</th>' + (context.canConfigure ? '<th><span class="sr-only">Actions</span></th>' : '') + '</tr></thead><tbody>' + plans.map((p,i) => '<tr><td><strong>' + esc(planName(p)) + '</strong><div class="id muted">' + esc(p.id) + '</div></td><td><span class="badge' + (i ? ' paid' : '') + '">' + (i ? 'Paid · ' + i : 'Free · Default') + '</span></td><td>' + (i ? Object.entries(catalog.entitlementPlans).filter(([,id])=>id===p.id).map(([id])=>'<code>' + esc(id) + '</code>').join(', ') || 'Not bound' : 'No entitlement required') + '</td><td class="desktop-only">' + Object.keys(p.capabilities).length + ' benefits</td>' + (context.canConfigure ? '<td><button class="secondary" data-edit="' + i + '" aria-label="Edit ' + esc(planName(p)) + '">Edit</button></td>' : '') + '</tr>').join('') + '</tbody></table></div><div class="pagination"><span>' + plans.length + ' plans</span><span>Lower priority numbers win when multiple entitlements are active. Prices and offers are managed in the provider and store.</span></div></div>';
     content.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => configure(plans[Number(b.dataset.edit)].id));
-    document.getElementById("mapping")?.addEventListener("click", () => configure(null));
     document.getElementById("new-plan")?.addEventListener("click", createPlan);
     message("");
   } catch(e) { report(e, scope); }
@@ -159,13 +177,17 @@ async function createPlan() {
   try {
     const {catalog, etag} = await loadCatalog(scope);
     const plans = [catalog.freePlan,...catalog.plans];
-    content.innerHTML = '<button class="secondary back" id="cancel">Back to plans</button><h1>Create plan</h1><form id="create-plan-form"><div class="card"><label for="new-plan-id">Plan ID</label><input id="new-plan-id" name="id" required maxlength="100" pattern="([a-zA-Z0-9_.:]|-)+"><p class="muted">Stable technical identifier. Existing plan IDs cannot be renamed or removed.</p><label for="new-plan-name">Display name</label><input id="new-plan-name" name="name" required maxlength="100"><label for="template">Copy benefit limits from</label><select id="template" name="template">' + plans.map((p,i)=>'<option value="' + i + '">' + esc(planName(p)) + '</option>').join('') + '</select><p class="muted">Uses existing application capabilities. The plan is appended at the lowest entitlement priority; map a provider entitlement in Subscription settings to make it available through payments.</p></div><label for="confirm">Type ' + esc(scope.environment) + ' to confirm</label><input id="confirm" name="environment" required><div class="actions"><button type="submit">Create plan</button></div></form>';
+    content.innerHTML = '<button class="secondary back" id="cancel">Back to plans</button><h1>Create plan</h1><form id="create-plan-form"><div class="card"><label for="new-plan-id">Plan ID</label><input id="new-plan-id" name="id" required maxlength="100" pattern="([a-zA-Z0-9_.:]|-)+"><p class="muted">Stable technical identifier. Existing plan IDs cannot be renamed or removed.</p><label for="new-plan-name">Display name</label><input id="new-plan-name" name="name" required maxlength="100"><label for="template">Copy benefit limits from</label><select id="template" name="template">' + plans.map((p,i)=>'<option value="' + i + '">' + esc(planName(p)) + '</option>').join('') + '</select><p class="muted">The new plan has the lowest selection priority. Existing application capabilities are reused.</p><div id="new-benefits">' + benefitInputs(plans[0]) + '</div>' + entitlementFields(catalog,null) + '</div><label for="confirm">Type ' + esc(scope.environment) + ' to confirm</label><input id="confirm" name="environment" required><div class="actions"><button type="submit">Create plan</button></div></form>';
     document.getElementById("cancel").onclick = showPlans;
+    document.getElementById("template").onchange = event => { document.getElementById("new-benefits").innerHTML = benefitInputs(plans[Number(event.target.value)]); };
     bindForm("create-plan-form",scope,async f=>{
       const id=String(f.get("id")).trim();
       if (plans.some(p=>p.id===id)) throw new Error("This plan ID already exists.");
       const updated=structuredClone(catalog), template=plans[Number(f.get("template"))];
-      updated.plans.push({id,displayName:String(f.get("name")).trim(),capabilities:structuredClone(template.capabilities)});
+      const capabilities = structuredClone(template.capabilities);
+      Object.values(capabilities).forEach((value,index) => { const limit = f.get("limit-" + index); value.limit = limit === "" ? null : Number(limit); });
+      updated.plans.push({id,displayName:String(f.get("name")).trim(),capabilities});
+      bindEntitlement(updated,id,f);
       await api(scope,"/catalog",{method:"PUT",headers:{"If-Match":etag,"Admin-Environment":f.get("environment")},body:JSON.stringify(updated)});
       await configure(id);
     });
@@ -173,32 +195,34 @@ async function createPlan() {
   } catch(error) { report(error,scope); }
 }
 async function configure(planId) {
-  const scope = view(); nav("plans");
+  const scope = view(); nav(planId === null ? "payments" : "plans");
   try {
     const {catalog, etag} = await loadCatalog(scope);
     const plans = [catalog.freePlan, ...catalog.plans];
     const plan = planId === null ? null : plans.find(p => p.id === planId);
     if (planId !== null && !plan) throw new Error("This plan is no longer available. Return to the plan list.");
-    const fields = plan ? '<div class="card"><p class="muted">Plan ID: <code>' + esc(plan.id) + '</code></p><label for="plan-name">Display name for ' + esc(plan.id) + '</label><input id="plan-name" name="name" required maxlength="100" value="' + esc(planName(plan)) + '"><h3>Benefit limits</h3><p class="muted">Leave a limit blank for unlimited.</p>' + benefitInputs(plan) + '</div>' : '<div class="card"><h3>Subscription mapping</h3><p class="muted">Map provider entitlements to membership plans. This determines which plan a verified purchase or gift unlocks.</p>' + Object.entries(catalog.entitlementPlans).map(([key,value],i) => '<label for="mapping-' + i + '">Entitlement ' + esc(key) + '</label><select id="mapping-' + i + '" name="mapping-' + i + '">' + catalog.plans.map(p => '<option value="' + esc(p.id) + '"' + (p.id === value ? ' selected' : '') + '>' + esc(planName(p)) + '</option>').join('') + '</select>').join('') + '<h3>Add entitlement mapping</h3><label for="new-entitlement">New entitlement ID</label><input id="new-entitlement" name="new-entitlement" maxlength="100"><label for="new-entitlement-plan">Plan for new entitlement</label><select id="new-entitlement-plan" name="new-entitlement-plan">' + catalog.plans.map(p => '<option value="' + esc(p.id) + '">' + esc(planName(p)) + '</option>').join('') + '</select><p class="muted">Leave the ID blank to keep existing mappings only. Create the matching entitlement in your payment provider.</p><label><input type="checkbox" name="grace"' + (catalog.honorGracePeriod ? ' checked' : '') + '> Honor provider grace periods</label><p class="muted">Keep access until the provider’s grace-period end while a renewal payment is being resolved.</p></div>';
-    content.innerHTML = '<button class="secondary back" id="cancel">Back to plans</button><h1>' + esc(plan ? 'Edit ' + planName(plan) : 'Subscription settings') + '</h1><form id="catalog-form">' + fields + '<label for="confirm">Type ' + esc(scope.environment) + ' to confirm</label><input id="confirm" name="environment" required><div class="actions"><button type="submit">Save changes</button></div></form>';
-    document.getElementById("cancel").onclick = showPlans;
+    const fields = plan ? '<div class="card"><p class="muted">Plan ID: <code>' + esc(plan.id) + '</code></p><label for="plan-name">Display name for ' + esc(plan.id) + '</label><input id="plan-name" name="name" required maxlength="100" value="' + esc(planName(plan)) + '"><h3>Benefit limits</h3><p class="muted">Leave a limit blank for unlimited.</p>' + benefitInputs(plan) + (plan.id === catalog.freePlan.id ? '' : '<label for="priority">Selection priority</label><select id="priority" name="priority">' + catalog.plans.map((p,index)=>'<option value="' + index + '"' + (p.id === plan.id ? ' selected' : '') + '>' + (index + 1) + '</option>').join('') + '</select><p class="muted">Priority 1 wins when multiple entitlements are active.</p>' + entitlementFields(catalog,plan.id)) + '</div>' : '<div class="card"><label><input type="checkbox" name="grace"' + (catalog.honorGracePeriod ? ' checked' : '') + '> Honor provider grace periods</label><p class="muted">Keep access until the provider’s grace-period end while a renewal payment is being resolved.</p></div>';
+    content.innerHTML = '<button class="secondary back" id="cancel">Back to plans</button><h1>' + esc(plan ? 'Edit ' + planName(plan) : 'Edit grace period policy') + '</h1><form id="catalog-form">' + fields + '<label for="confirm">Type ' + esc(scope.environment) + ' to confirm</label><input id="confirm" name="environment" required><div class="actions"><button type="submit">Save changes</button></div></form>';
+    document.getElementById("cancel").textContent = plan ? "Back to plans" : "Back to payment settings";
+    document.getElementById("cancel").onclick = plan ? showPlans : showPayments;
     bindForm("catalog-form", scope, async f => {
       const updated = structuredClone(catalog);
       if (plan) {
         const edited = [updated.freePlan,...updated.plans].find(p => p.id === planId);
         edited.displayName = String(f.get("name"));
         Object.values(edited.capabilities).forEach((v,i) => { const value = f.get("limit-" + i); v.limit = value === "" ? null : Number(value); });
-      } else {
-        Object.keys(updated.entitlementPlans).forEach((key,i) => { updated.entitlementPlans[key] = f.get("mapping-" + i); });
-        const added = String(f.get("new-entitlement") || "").trim();
-        if (added) {
-          if (Object.hasOwn(updated.entitlementPlans,added)) throw new Error("This entitlement mapping already exists.");
-          Object.defineProperty(updated.entitlementPlans,added,{value:String(f.get("new-entitlement-plan")),enumerable:true,writable:true,configurable:true});
+        if (plan.id !== catalog.freePlan.id) {
+          Object.entries(catalog.entitlementPlans).filter(([,id]) => id === plan.id).forEach(([id],index) => { updated.entitlementPlans[id] = String(f.get("bound-" + index)); });
+          bindEntitlement(updated,plan.id,f);
+          const index = updated.plans.findIndex(p => p.id === plan.id);
+          const [moved] = updated.plans.splice(index,1);
+          updated.plans.splice(Number(f.get("priority")),0,moved);
         }
+      } else {
         updated.honorGracePeriod = f.has("grace");
       }
       await api(scope, "/catalog", {method:"PUT",headers:{"If-Match":etag,"Admin-Environment":f.get("environment")},body:JSON.stringify(updated)});
-      const shown = await configure(planId);
+      const shown = await (plan ? configure(planId) : showPayments());
       if (shown === active) message("Changes saved.");
     });
     message("");

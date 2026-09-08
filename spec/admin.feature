@@ -80,8 +80,10 @@ Feature: Optional product administration
     Then a list shows the configured free and paid plans
     And no edit form appears in the list
     When the operator edits one plan
-    Then only that plan's name and quotas can change
-    And subscription mapping has a separate configuration form
+    Then that plan's name, quotas, priority and entitlement bindings can change
+    And the plan editor maintains its provider entitlement bindings
+    And the plan list shows entitlement bindings and selection priority
+    And grace period policy is maintained in payment settings
     And switching environment returns to that environment's plan list
 
   # Acceptance: S_ADMIN_SESSION_REFRESH status=implemented layers=http,browser
@@ -119,5 +121,13 @@ Feature: Optional product administration
     When an administrator creates a plan from an existing plan template
     Then its new identity and limits are saved using the catalog revision
     And existing plans and benefit execution definitions remain unchanged
-    And the administrator can map a new provider entitlement to that plan
+    And the provider entitlement binding is saved in the same operation
     And duplicate identities and stale writes are rejected
+
+  # Acceptance: S_ADMIN_PLAN_BINDING status=implemented layers=browser
+  Scenario: Create a plan with its payment binding in one operation
+    Given an operator can configure the selected environment
+    When the operator creates a plan with an entitlement ID
+    Then the plan and binding are saved together
+    And an entitlement already bound to another plan is rejected without creating the plan
+    And other environments remain unchanged

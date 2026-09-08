@@ -2,7 +2,10 @@
 
 ## 0.7.1 - 2026-09-08
 
+- Maintain plan limits, entitlement bindings and priority together; move grace period policy to Payment settings.
+
 - Show unlimited cloud benefits as not metered instead of presenting historical counters as current usage.
+- Add browser-local refresh completion and expiry diagnostics without logging credentials or user identity.
 
 ## 0.7.0 - 2026-09-08
 

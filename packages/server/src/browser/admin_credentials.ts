@@ -58,6 +58,10 @@ export class AdminCredentialStore {
     }
   }
 
+  expiresAt(): number | null {
+    return this.read()?.expiresAt ?? null;
+  }
+
   async signIn(credentials: AdminCredentials): Promise<void> {
     await this.lock(this.key, async () => {
       this.storage.setItem(this.key, JSON.stringify(credentials));
