@@ -228,3 +228,9 @@ environment rejection, grant/revoke refresh, quota editing and narrow layout.
 Before deployment, the host must separately accept its actual Realmroot login,
 permission grants, environment composition and Worker/D1 runtime. Publishing,
 live grant writes and deployment are outside this implementation task.
+
+The host sets `tokenEndpointAuthMethod` to the confidential client's actual
+registration: `client_secret_basic` sends HTTP Basic authentication;
+`client_secret_post` sends form credentials (the compatibility default).
+Zigloo explicitly uses `client_secret_basic`. The adapter does not guess or
+retry with another authentication method after an exchange failure.

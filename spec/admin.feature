@@ -51,3 +51,10 @@ Feature: Optional product administration
     When login state is created or consumed
     Then a bounded oldest-first batch of expired rows is removed
     And active state remains usable
+
+  # Acceptance: S_ADMIN_CLIENT_AUTH status=implemented layers=unit
+  Scenario: Match the confidential client's registered token authentication method
+    Given the provider registers client_secret_basic or client_secret_post
+    When the administration callback exchanges its authorization code
+    Then it uses exactly the configured authentication method
+    And provider credentials remain on the server

@@ -19,6 +19,7 @@ export type AdminOidcOptions = {
   issuer: string;
   clientId: string;
   clientSecret: string;
+  tokenEndpointAuthMethod?: "client_secret_basic" | "client_secret_post";
   audience: string;
   /** Fixed HTTPS admin mount; callback is mount + /session/callback. */
   url: string;
@@ -143,7 +144,9 @@ export function createAdminOidc(options: AdminOidcOptions) {
     const response = await oauth.authorizationCodeGrantRequest(
       as,
       client,
-      oauth.ClientSecretPost(options.clientSecret),
+      options.tokenEndpointAuthMethod === "client_secret_basic"
+        ? oauth.ClientSecretBasic(options.clientSecret)
+        : oauth.ClientSecretPost(options.clientSecret),
       params,
       redirectUri,
       payload.verifier,

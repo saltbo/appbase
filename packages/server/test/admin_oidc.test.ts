@@ -6,7 +6,11 @@ import { D1AdminSessionStore } from "../src/adapters/d1_admin_sessions.js";
 import { OidcAuthVerifier } from "../src/adapters/oidc_auth_verifier.js";
 import { sqlite } from "./admin_support.js";
 afterEach(() => vi.unstubAllGlobals());
-async function fixture() {
+async function fixture(
+  tokenEndpointAuthMethod:
+    | "client_secret_basic"
+    | "client_secret_post" = "client_secret_post",
+) {
   const issuer = "https://identity.test",
     url = "https://product.test/admin",
     audience = "https://product.test";
@@ -39,7 +43,17 @@ async function fixture() {
       if (target.pathname === "/token") {
         exchanges++;
         const body = new URLSearchParams(await request.text());
-        expect(body.get("client_secret")).toBe("test-secret");
+        if (tokenEndpointAuthMethod === "client_secret_basic") {
+          const authorization = request.headers.get("Authorization")!;
+          expect(authorization).toMatch(/^Basic /u);
+          expect(
+            atob(authorization.slice(6)).split(":").map(decodeURIComponent),
+          ).toEqual(["admin-client", "test-secret"]);
+          expect(body.has("client_secret")).toBe(false);
+        } else {
+          expect(body.get("client_secret")).toBe("test-secret");
+          expect(request.headers.has("Authorization")).toBe(false);
+        }
         expect(body.get("resource")).toBe(audience);
         expect(body.get("code_verifier")?.length).toBeGreaterThan(40);
         const code = body.get("code")!;
@@ -74,6 +88,7 @@ async function fixture() {
     audience,
     clientId: "admin-client",
     clientSecret: "test-secret",
+    tokenEndpointAuthMethod,
     scopes: ["admin:read"],
     cookieKey,
     sessions: new D1AdminSessionStore(sqlite().db),
@@ -106,61 +121,67 @@ async function fixture() {
   };
 }
 describe("admin OIDC BFF", () => {
+  // Covers: S_ADMIN_CLIENT_AUTH case=contract
   // Covers: S_ADMIN_ACCESS case=happy_path
-  it("uses state, nonce, PKCE, validated tokens and a revocable HttpOnly opaque session", async () => {
-    const f = await fixture();
-    const start = await f.start();
-    expect(start.location.searchParams.get("code_challenge_method")).toBe(
-      "S256",
-    );
-    expect(start.location.searchParams.get("redirect_uri")).toBe(
-      "https://product.test/admin/session/callback",
-    );
-    expect(start.response.headers.get("Set-Cookie")).toContain("HttpOnly");
-    expect(start.response.headers.get("Set-Cookie")).toContain("Secure");
-    const response = await f.callback(
-      start.location.searchParams.get("state")!,
-      start.cookie,
-    );
-    expect(response.status).toBe(302);
-    const cookies = response.headers.getSetCookie();
-    const session = cookies.find((c) => c.startsWith("__Host-appbase-admin="))!;
-    expect(session).toBeTruthy();
-    expect(session).not.toContain("eyJ");
-    const request = new Request("https://product.test/admin/context", {
-      headers: { Cookie: session.split(";")[0]! },
-    });
-    expect(await f.authenticate(request)).toEqual({
-      sub: "operator",
-      scopes: ["admin:read", "admin:grants:write"],
-    });
-    expect(
-      (
-        await f.callback(
-          start.location.searchParams.get("state")!,
-          start.cookie,
-        )
-      ).status,
-    ).toBe(401);
-    expect(f.getExchanges()).toBe(1);
-    expect(
-      (
-        await f.app.request("https://product.test/admin/session/logout", {
-          method: "POST",
-          headers: { Cookie: session, Origin: "https://evil.test" },
-        })
-      ).status,
-    ).toBe(401);
-    expect(
-      (
-        await f.app.request("https://product.test/admin/session/logout", {
-          method: "POST",
-          headers: { Cookie: session, Origin: "https://product.test" },
-        })
-      ).status,
-    ).toBe(302);
-    await expect(f.authenticate(request)).rejects.toThrow("expired");
-  });
+  it.each(["client_secret_basic", "client_secret_post"] as const)(
+    "uses %s with state, nonce, PKCE and a revocable opaque session",
+    async (method) => {
+      const f = await fixture(method);
+      const start = await f.start();
+      expect(start.location.searchParams.get("code_challenge_method")).toBe(
+        "S256",
+      );
+      expect(start.location.searchParams.get("redirect_uri")).toBe(
+        "https://product.test/admin/session/callback",
+      );
+      expect(start.response.headers.get("Set-Cookie")).toContain("HttpOnly");
+      expect(start.response.headers.get("Set-Cookie")).toContain("Secure");
+      const response = await f.callback(
+        start.location.searchParams.get("state")!,
+        start.cookie,
+      );
+      expect(response.status).toBe(302);
+      const cookies = response.headers.getSetCookie();
+      const session = cookies.find((c) =>
+        c.startsWith("__Host-appbase-admin="),
+      )!;
+      expect(session).toBeTruthy();
+      expect(session).not.toContain("eyJ");
+      const request = new Request("https://product.test/admin/context", {
+        headers: { Cookie: session.split(";")[0]! },
+      });
+      expect(await f.authenticate(request)).toEqual({
+        sub: "operator",
+        scopes: ["admin:read", "admin:grants:write"],
+      });
+      expect(
+        (
+          await f.callback(
+            start.location.searchParams.get("state")!,
+            start.cookie,
+          )
+        ).status,
+      ).toBe(401);
+      expect(f.getExchanges()).toBe(1);
+      expect(
+        (
+          await f.app.request("https://product.test/admin/session/logout", {
+            method: "POST",
+            headers: { Cookie: session, Origin: "https://evil.test" },
+          })
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await f.app.request("https://product.test/admin/session/logout", {
+            method: "POST",
+            headers: { Cookie: session, Origin: "https://product.test" },
+          })
+        ).status,
+      ).toBe(302);
+      await expect(f.authenticate(request)).rejects.toThrow("expired");
+    },
+  );
   // Covers: S_ADMIN_ACCESS case=error_path
   it("rejects missing, mismatched and tampered state before token exchange", async () => {
     const f = await fixture();
