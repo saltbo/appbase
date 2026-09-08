@@ -1,3 +1,4 @@
+// Covers: S_ADMIN_D1_RUNTIME case=contract
 import { describe, it, expect, vi } from "vitest";
 import { D1MembershipRepository } from "../src/adapters/d1_membership_repository.js";
 import { setup, catalog, sqlite } from "./admin_support.js";

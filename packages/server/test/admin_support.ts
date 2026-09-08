@@ -33,10 +33,17 @@ export function sqlite() {
         success: true,
         results: sqlite.prepare(sql).all(...args),
       }),
-      run: async () => ({
-        success: true,
-        meta: { changes: Number(sqlite.prepare(sql).run(...args).changes) },
-      }),
+      run: async () => {
+        // Workerd D1 includes trigger writes in meta.changes.
+        const before = Number(
+          sqlite.prepare("SELECT total_changes() AS n").get()!.n,
+        );
+        sqlite.prepare(sql).run(...args);
+        const after = Number(
+          sqlite.prepare("SELECT total_changes() AS n").get()!.n,
+        );
+        return { success: true, meta: { changes: after - before } };
+      },
     }) as D1PreparedStatement;
   return {
     sqlite,
