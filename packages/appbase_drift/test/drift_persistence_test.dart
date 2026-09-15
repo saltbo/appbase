@@ -32,11 +32,95 @@ void main() {
 
   tearDown(() => database.close());
 
+  test(
+    'renames legacy sync state without resetting seed, cursor or outbox',
+    () async {
+      await persistence.seedIfNeeded(session.value!);
+      await persistence.applyPull(
+        session.value!,
+        const AppBaseChangePage(checkpoint: 'saved-cursor', items: []),
+      );
+      await persistence.commit(const [
+        AppBaseMutationDraft(
+          collection: 'notes',
+          recordId: 'pending',
+          operation: AppBaseMutationOperation.put,
+          payload: {'value': 'offline'},
+        ),
+      ], () async {});
+      final before =
+          (await database
+                  .customSelect('SELECT * FROM appbase_sync_state')
+                  .getSingle())
+              .data;
+      final pending =
+          (await database
+                  .customSelect('SELECT * FROM appbase_outbox')
+                  .getSingle())
+              .data;
+      await database.customStatement(
+        'ALTER TABLE appbase_sync_state RENAME TO appbase_accounts',
+      );
+      await database.customStatement(
+        'DROP INDEX appbase_sync_state_one_active',
+      );
+      await database.customStatement(
+        'CREATE UNIQUE INDEX appbase_accounts_one_active ON appbase_accounts(active) WHERE active = 1',
+      );
+      await persistence.ensureSchema();
+      await persistence.ensureSchema();
+      expect(
+        (await database
+                .customSelect('SELECT * FROM appbase_sync_state')
+                .getSingle())
+            .data,
+        before,
+      );
+      expect(
+        (await database
+                .customSelect('SELECT * FROM appbase_outbox')
+                .getSingle())
+            .data,
+        pending,
+      );
+      expect(
+        await database
+            .customSelect(
+              "SELECT name FROM sqlite_master WHERE name = 'appbase_accounts'",
+            )
+            .get(),
+        isEmpty,
+      );
+      expect(
+        (await persistence.saveAccount(session.value!)).checkpoint,
+        'saved-cursor',
+      );
+      await expectLater(
+        database.customStatement(
+          "INSERT INTO appbase_sync_state (issuer,subject,device_id,active) VALUES ('other','other','device',1)",
+        ),
+        throwsA(isA<Exception>()),
+      );
+    },
+  );
+
+  test(
+    'refuses ambiguous old and new sync tables without deleting either',
+    () async {
+      await database.customStatement(
+        'CREATE TABLE appbase_accounts AS SELECT * FROM appbase_sync_state',
+      );
+      await expectLater(persistence.ensureSchema(), throwsStateError);
+      expect(await _count(database, 'appbase_accounts'), 1);
+      expect(await _count(database, 'appbase_sync_state'), 1);
+    },
+  );
+
   test('deletion purges the local projection and account metadata', () async {
     await database.customStatement("INSERT INTO notes VALUES ('n1','secret')");
     await persistence.deleteAccount(session.value!);
     expect(await _count(database, 'notes'), 0);
-    expect(await _count(database, 'appbase_accounts'), 0);
+    expect(await _count(database, 'appbase_sync_state'), 0);
     expect(await _count(database, 'appbase_records'), 0);
     expect(await _count(database, 'appbase_outbox'), 0);
     await expectLater(
@@ -117,7 +201,7 @@ void main() {
 
     expect(await _count(database, 'notes'), 0);
     final account = await database
-        .customSelect('SELECT checkpoint FROM appbase_accounts')
+        .customSelect('SELECT checkpoint FROM appbase_sync_state')
         .getSingle();
     expect(account.readNullable<String>('checkpoint'), isNull);
   });

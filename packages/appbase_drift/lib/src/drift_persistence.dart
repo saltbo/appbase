@@ -57,7 +57,7 @@ final class AppBaseDriftPersistence
       }
     }
     await database.transaction(() async {
-      for (final table in [tables.outbox, tables.records, tables.accounts]) {
+      for (final table in [tables.outbox, tables.records, tables.syncState]) {
         await database.customStatement(
           'DELETE FROM $table WHERE issuer = ? AND subject = ?',
           [account.issuer.toString(), account.subject],
@@ -71,7 +71,7 @@ final class AppBaseDriftPersistence
     final existing = await _account(account);
     final active = await database
         .customSelect(
-          'SELECT issuer, subject FROM ${tables.accounts} WHERE active = 1',
+          'SELECT issuer, subject FROM ${tables.syncState} WHERE active = 1',
         )
         .getSingleOrNull();
     final switches =
@@ -94,10 +94,10 @@ final class AppBaseDriftPersistence
       checkpoint: switches ? null : existing?[tables.checkpoint] as String?,
     );
     await database.transaction(() async {
-      await database.customUpdate('UPDATE ${tables.accounts} SET active = 0');
+      await database.customUpdate('UPDATE ${tables.syncState} SET active = 0');
       await database.customStatement(
         '''
-        INSERT INTO ${tables.accounts}
+        INSERT INTO ${tables.syncState}
           (issuer, subject, device_id, ${tables.checkpoint}, status, active, last_synced_at)
         VALUES (?, ?, ?, ?, ?, 1, ?)
         ON CONFLICT(issuer, subject) DO UPDATE SET
@@ -131,7 +131,7 @@ final class AppBaseDriftPersistence
         await _enqueue(account, draft);
       }
       await database.customUpdate(
-        'UPDATE ${tables.accounts} SET status = ? WHERE issuer = ? AND subject = ?',
+        'UPDATE ${tables.syncState} SET status = ? WHERE issuer = ? AND subject = ?',
         variables: [
           const Variable<String>('seeded'),
           Variable<String>(account.issuer.toString()),
@@ -242,7 +242,7 @@ final class AppBaseDriftPersistence
       }
       await database.customUpdate(
         '''
-        UPDATE ${tables.accounts}
+        UPDATE ${tables.syncState}
         SET ${tables.checkpoint} = ?, last_synced_at = ?
         WHERE issuer = ? AND subject = ?
         ''',
@@ -368,7 +368,7 @@ final class AppBaseDriftPersistence
   Future<Map<String, Object?>?> _account(AppBaseAccount account) async {
     final row = await database
         .customSelect(
-          'SELECT ${tables.checkpoint}, status, last_synced_at FROM ${tables.accounts} WHERE issuer = ? AND subject = ?',
+          'SELECT ${tables.checkpoint}, status, last_synced_at FROM ${tables.syncState} WHERE issuer = ? AND subject = ?',
           variables: [
             Variable<String>(account.issuer.toString()),
             Variable<String>(account.subject),

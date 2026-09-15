@@ -56,3 +56,19 @@ payload to merge and return it.
 Record identifiers and collection names are index metadata and remain
 plaintext. Products must use opaque identifiers when their natural identifiers
 contain private information.
+
+## Local persistence tables
+
+`appbase_sync_state` stores this installation's synchronization checkpoint,
+seed status and active selection for each `(issuer, subject)`. It is not a server
+application account or a device inventory. `appbase_records` stores applied
+revision metadata; `appbase_outbox` stores pending device mutations. The
+installation ID and login credentials are owned by session/secure storage.
+
+Initialization renames the previous default `appbase_accounts` table in place,
+preserving checkpoints, seed state and queued mutations. If both old and new
+tables exist, initialization fails explicitly without selecting or dropping
+one. Custom table names remain host-owned: hosts migrate their own schema and
+supply `syncState`; the old `accounts` configuration name is a compatibility
+alias. This storage rename does not introduce server-side account registration
+or alter the existing subject-based deletion fence.
