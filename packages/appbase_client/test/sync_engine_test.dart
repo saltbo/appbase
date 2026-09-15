@@ -1,7 +1,62 @@
+import 'dart:async';
 import 'package:appbase_client/appbase_client.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'deletion drains in-flight sync, suppresses new runs and clears local state before logout',
+    () async {
+      final session = _Session(_account());
+      final api = _Api();
+      final persistence = _Persistence(_account());
+      final gate = Completer<void>();
+      api.deletionGate = gate.future;
+      final engine = AppBaseSyncEngine(
+        session: session,
+        api: api,
+        persistence: persistence,
+        batchIds: _BatchIds(),
+      );
+      await engine.syncNow();
+      final deletes = [engine.deleteAccount(), engine.deleteAccount()];
+      await Future<void>.delayed(Duration.zero);
+      final calls = api.configurationCalls;
+      await engine.syncNow();
+      expect(api.configurationCalls, calls);
+      expect(api.deletionCalls, 1);
+      expect(session.value, isNotNull);
+      gate.complete();
+      await Future.wait(deletes);
+      expect(persistence.deleted, true);
+      expect(session.value, isNull);
+      expect(engine.state.account, isNull);
+      await engine.close();
+    },
+  );
+
+  test(
+    'failed deletion retains local data and session for explicit retry',
+    () async {
+      final session = _Session(_account());
+      final api = _Api()..deleteFails = true;
+      final persistence = _Persistence(_account());
+      final engine = AppBaseSyncEngine(
+        session: session,
+        api: api,
+        persistence: persistence,
+        batchIds: _BatchIds(),
+      );
+      await expectLater(engine.deleteAccount(), throwsStateError);
+      expect(persistence.deleted, false);
+      expect(session.value, isNotNull);
+      api.deleteFails = false;
+      await engine.deleteAccount();
+      expect(persistence.deleted, true);
+      expect(session.value, isNull);
+      await engine.close();
+    },
+  );
+
   test(
     'serializes concurrent runs, pages pulls, and honors server batch size',
     () async {
@@ -71,7 +126,17 @@ final class _BatchIds implements AppBaseBatchIdGenerator {
   String next() => 'batch-${++value}';
 }
 
-final class _Api implements AppBaseApi {
+final class _Api implements AppBaseApi, AppBaseAccountDeletionApi {
+  bool deleteFails = false;
+  int deletionCalls = 0;
+  Future<void>? deletionGate;
+  @override
+  Future<void> deleteAccount({required String accessToken}) async {
+    deletionCalls++;
+    await deletionGate;
+    if (deleteFails) throw StateError('offline');
+  }
+
   var configurationCalls = 0;
   final pushedSizes = <int>[];
   final pullTokens = <String?>[];
@@ -137,7 +202,14 @@ final class _Api implements AppBaseApi {
   }
 }
 
-final class _Persistence implements AppBasePersistence {
+final class _Persistence
+    implements AppBasePersistence, AppBaseAccountDeletionPersistence {
+  bool deleted = false;
+  @override
+  Future<void> deleteAccount(AppBaseAccount account) async {
+    deleted = true;
+  }
+
   _Persistence(this.value)
     : pending = List.generate(
         3,

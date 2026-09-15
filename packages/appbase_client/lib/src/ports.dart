@@ -59,3 +59,16 @@ abstract interface class AppBaseCollectionAdapter {
 abstract interface class AppBaseBatchIdGenerator {
   String next();
 }
+
+/// Optional lifecycle capability for applications that support account deletion.
+abstract interface class AppBaseAccountDeletionApi {
+  Future<void> deleteAccount({required String accessToken});
+}
+
+abstract interface class AppBaseAccountDeletionPersistence {
+  Future<void> deleteAccount(AppBaseAccount account);
+}
+
+abstract interface class AppBaseCollectionDeletionAdapter {
+  Future<void> deleteAccount(AppBaseAccount account);
+}

@@ -107,3 +107,11 @@ validation allows deleting unreferenced non-default plans while preserving exist
 entitlement IDs and database-time historical grant references. A default-only
 catalog is valid. Existing BillingCatalog constructors retain legacy behavior;
 new hosts provide only BillingSchema and initialize through administration.
+
+## Optional account deletion (v0.9.0)
+
+The 2026-08-17 protocol gains optional `DELETE /appbase/account` without changing existing sync
+representations. Existing hosts remain compatible until enabling the service. New clients must
+only expose deletion when the host configures it. Migration 0007 provides a persistent write fence
+for old clients too. After deletion, protected operations return `403 ACCOUNT_DELETED`; an updated
+client erases its local projection and session. Explicit recreation is not automatic.

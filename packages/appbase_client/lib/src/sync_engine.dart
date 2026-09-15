@@ -20,6 +20,8 @@ final class AppBaseSyncEngine {
   final _states = StreamController<AppBaseSyncState>.broadcast(sync: true);
   AppBaseSyncState _state = const AppBaseSyncState.idle();
   Future<void>? _activeRun;
+  Future<void>? _deletion;
+  bool _deletionStarted = false;
 
   AppBaseSyncState get state => _state;
   Stream<AppBaseSyncState> get states => _states.stream;
@@ -34,6 +36,7 @@ final class AppBaseSyncEngine {
   }
 
   Future<AppBaseAccount> signIn() async {
+    _deletionStarted = false;
     final account = await persistence.saveAccount(await session.signIn());
     await persistence.seedIfNeeded(account);
     _set(AppBaseSyncState.idle(account: account));
@@ -48,6 +51,7 @@ final class AppBaseSyncEngine {
   }
 
   Future<void> syncNow() {
+    if (_deletionStarted) return Future.value();
     final active = _activeRun;
     if (active != null) return active;
     final run = _synchronize();
@@ -55,6 +59,42 @@ final class AppBaseSyncEngine {
     return run.whenComplete(() {
       if (identical(_activeRun, run)) _activeRun = null;
     });
+  }
+
+  Future<void> deleteAccount() {
+    final active = _deletion;
+    if (active != null) return active;
+    final run = _deleteAccount();
+    _deletion = run;
+    return run.whenComplete(() {
+      if (identical(_deletion, run)) _deletion = null;
+    });
+  }
+
+  Future<void> _deleteAccount() async {
+    final deletionApi = api;
+    final deletionPersistence = persistence;
+    if (deletionApi is! AppBaseAccountDeletionApi ||
+        deletionPersistence is! AppBaseAccountDeletionPersistence) {
+      throw StateError('Account deletion is not configured.');
+    }
+    _deletionStarted = true;
+    try {
+      await _activeRun;
+    } on Object {
+      /* Deletion must also work after sync failure. */
+    }
+    final account = await session.account();
+    if (account == null) throw StateError('Sign in to delete your account.');
+    final token = await session.accessToken();
+    if (token == null) throw StateError('Sign in to delete your account.');
+    await (deletionApi as AppBaseAccountDeletionApi).deleteAccount(
+      accessToken: token,
+    );
+    await (deletionPersistence as AppBaseAccountDeletionPersistence)
+        .deleteAccount(account);
+    await session.signOut();
+    _set(const AppBaseSyncState.idle());
   }
 
   Future<void> close() => _states.close();
@@ -92,6 +132,18 @@ final class AppBaseSyncEngine {
       account = await _pullAll(account, token, config.maxChangesPerPage);
       _set(AppBaseSyncState.idle(account: account));
     } on AppBaseException catch (error) {
+      if (error is AppBaseApiException && error.code == 'ACCOUNT_DELETED') {
+        _deletionStarted = true;
+        final cleanup = persistence;
+        if (cleanup is AppBaseAccountDeletionPersistence) {
+          await (cleanup as AppBaseAccountDeletionPersistence).deleteAccount(
+            account,
+          );
+          await session.signOut();
+          _set(const AppBaseSyncState.idle());
+        }
+        rethrow;
+      }
       await persistence.recordFailure(account, error);
       _set(
         AppBaseSyncState(

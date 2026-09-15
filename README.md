@@ -53,3 +53,12 @@ package to `v0.2.0`; override `appbase_billing` to the same Git source when usin
 See [billing setup and operations](docs/billing.md) for migration, remote catalog,
 platform requirements and provider configuration. Existing sync consumers do not
 need to enable billing or add native purchase SDKs.
+
+## Account deletion release
+
+Git release `v0.9.0` includes server 0.9.0 and Dart packages 0.2.0.
+Apply migration 0007 and configure `AccountDeletionService` in your host before exposing the
+client deletion action. Reuse `AppBaseHttpApi`, `AppBaseSyncEngine` and the Drift deletion
+adapter. The product owns its confirmation UI, additional device data and other API guards.
+See [protocol semantics](protocol/semantics.md#application-account-deletion).
+Registry publication remains separate from this Git release.

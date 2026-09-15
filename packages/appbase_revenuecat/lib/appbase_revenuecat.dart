@@ -6,12 +6,21 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 
 /// Optional mobile UI. The host serializes identity changes through BillingController.
-final class RevenueCatBillingUi implements BillingUi {
+final class RevenueCatBillingUi implements BillingUi, BillingIdentityCleanup {
   @override
   bool get supported =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.iOS ||
           defaultTargetPlatform == TargetPlatform.android);
+  @override
+  Future<void> clearIdentity() async {
+    if (supported &&
+        await Purchases.isConfigured &&
+        !await Purchases.isAnonymous) {
+      await Purchases.logOut();
+    }
+  }
+
   @override
   Future<void> identify(BillingAccount account) async {
     if (!supported) {

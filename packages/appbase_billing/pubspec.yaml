@@ -1,6 +1,6 @@
 name: appbase_billing
 description: Account-bound billing orchestration and HTTP client for AppBase.
-version: 0.1.0
+version: 0.2.0
 resolution: workspace
 repository: https://github.com/saltbo/appbase
 environment:

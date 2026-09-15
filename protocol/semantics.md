@@ -115,3 +115,20 @@ the strong If-Match value from this explicit revision, independently of proxy
 compression changing response ETags.
 Existing legacy membership grants remain until explicitly migrated, preserving
 previously issued membership.
+
+## Application account deletion
+
+Hosts may enable `DELETE /appbase/account` using `AccountDeletionService`.
+Authenticate the current owner with write authorization; never accept a subject in the request body.
+Apply migration 0007 before enabling the route. Deletion first atomically fences writes and erases all
+sync history, payload encryption keys, membership data and both environment billing associations.
+A minimal pseudonymous subject fence remains solely to reject old and refreshed IdP sessions.
+It must not contain profile or application content. No implicit registration may remove this fence.
+An explicit registration lifecycle is a separate host policy, not an effect of token refresh.
+
+External cleanup resumes on repeated DELETE. Retain only billing identifiers needed for pending
+cleanup, removing them after the provider accepts deletion. RevenueCat deletion is asynchronous;
+204 means local erasure and provider acceptance, not synchronous completion in RevenueCat.
+The host must fence its other authenticated APIs and purge any additional owned data stores.
+The IdP account and unrelated applications are outside this operation. Subscription cancellation
+is separately controlled by the store and must be explained in the confirmation UI.

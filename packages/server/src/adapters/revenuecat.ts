@@ -68,6 +68,33 @@ export class RevenueCatProvider implements BillingProvider {
     private readonly request: typeof fetch = fetch,
     private readonly environment?: BillingEnvironment,
   ) {}
+  async deleteSubscriber(appUserId: string): Promise<void> {
+    if (!this.apiKey)
+      throw new BillingError(
+        "CONFIGURATION_MISSING",
+        "RevenueCat server credentials are not configured.",
+      );
+    const request = this.request;
+    const response = await request(
+      `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          Accept: "application/json",
+        },
+        signal: AbortSignal.timeout(10000),
+        redirect: "manual",
+      },
+    );
+    await response.body?.cancel();
+    if (!response.ok && response.status !== 404)
+      throw new BillingError(
+        "PROVIDER_UNAVAILABLE",
+        `RevenueCat returned HTTP ${response.status} during deletion.`,
+      );
+  }
+
   async subscriber(appUserId: string): Promise<BillingState> {
     if (!this.apiKey)
       throw new BillingError(

@@ -7,7 +7,7 @@ import 'errors.dart';
 import 'models.dart';
 import 'ports.dart';
 
-final class AppBaseHttpApi implements AppBaseApi {
+final class AppBaseHttpApi implements AppBaseApi, AppBaseAccountDeletionApi {
   AppBaseHttpApi({
     required Uri baseUri,
     http.Client? client,
@@ -20,6 +20,11 @@ final class AppBaseHttpApi implements AppBaseApi {
   final String protocolVersion;
   final http.Client _client;
   final Duration requestTimeout;
+
+  @override
+  Future<void> deleteAccount({required String accessToken}) async {
+    await _request('DELETE', 'account', token: accessToken);
+  }
 
   @override
   Future<AppBaseClientConfiguration> configuration() async {

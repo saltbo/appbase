@@ -9,7 +9,10 @@ import 'drift_schema.dart';
 typedef AppBaseClock = DateTime Function();
 
 final class AppBaseDriftPersistence
-    implements AppBasePersistence, AppBaseMutationSink {
+    implements
+        AppBasePersistence,
+        AppBaseMutationSink,
+        AppBaseAccountDeletionPersistence {
   AppBaseDriftPersistence(
     this.database, {
     required AppBaseSession session,
@@ -37,8 +40,31 @@ final class AppBaseDriftPersistence
   final AppBaseClock _clock;
   final Random _random;
   final void Function()? onMutationQueued;
+  final Set<(Uri, String)> _deletedAccounts = {};
 
   Future<void> ensureSchema() => database.createAppBaseSchema(tables: tables);
+
+  @override
+  Future<void> deleteAccount(AppBaseAccount account) async {
+    _deletedAccounts.add((account.issuer, account.subject));
+    for (final adapter in _adapters.values) {
+      if (adapter is AppBaseCollectionDeletionAdapter) {
+        await (adapter as AppBaseCollectionDeletionAdapter).deleteAccount(
+          account,
+        );
+      } else {
+        await adapter.deactivate(account);
+      }
+    }
+    await database.transaction(() async {
+      for (final table in [tables.outbox, tables.records, tables.accounts]) {
+        await database.customStatement(
+          'DELETE FROM $table WHERE issuer = ? AND subject = ?',
+          [account.issuer.toString(), account.subject],
+        );
+      }
+    });
+  }
 
   @override
   Future<AppBaseAccount> saveAccount(AppBaseAccount account) async {
@@ -258,6 +284,12 @@ final class AppBaseDriftPersistence
       return;
     }
     await database.transaction(() async {
+      // A callback may have captured the old session before deletion/sign-out.
+      if (_deletedAccounts.contains((account.issuer, account.subject))) {
+        throw const AppBaseLocalException(
+          message: 'The application account was deleted.',
+        );
+      }
       await localWrite();
       for (final mutation in mutations) {
         if (!_adapters.containsKey(mutation.collection)) {

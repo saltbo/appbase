@@ -23,7 +23,9 @@
           "recordId": "fixture-note-1",
           "baseRevision": null,
           "operation": "put",
-          "payload": { "title": "Shared contract" }
+          "payload": {
+            "title": "Shared contract"
+          }
         }
       ]
     },
@@ -39,10 +41,18 @@
             "revision": "00000000-0000-4000-8000-000000000001",
             "deleted": false,
             "createdAt": "2026-08-17T00:00:00.000Z",
-            "payload": { "title": "Shared contract" }
+            "payload": {
+              "title": "Shared contract"
+            }
           }
         }
       ]
     }
+  },
+  "accountDeletion": {
+    "method": "DELETE",
+    "path": "account",
+    "successStatus": 204,
+    "deletedCode": "ACCOUNT_DELETED"
   }
 }
