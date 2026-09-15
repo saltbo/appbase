@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -11,12 +12,14 @@ final class AppBaseHttpApi implements AppBaseApi {
     required Uri baseUri,
     http.Client? client,
     this.protocolVersion = appBaseProtocolVersion,
+    this.requestTimeout = const Duration(seconds: 20),
   }) : baseUri = _directoryUri(baseUri),
        _client = client ?? http.Client();
 
   final Uri baseUri;
   final String protocolVersion;
   final http.Client _client;
+  final Duration requestTimeout;
 
   @override
   Future<AppBaseClientConfiguration> configuration() async {
@@ -96,16 +99,30 @@ final class AppBaseHttpApi implements AppBaseApi {
     Map<String, Object?>? body,
   }) async {
     try {
-      final request = http.Request(method, uri)
-        ..headers.addAll({
-          'Accept': 'application/json',
-          'API-Version': protocolVersion,
-          if (token != null) 'Authorization': 'Bearer $token',
-          if (body != null) 'Content-Type': 'application/json',
-        });
+      final abort = Completer<void>();
+      final request =
+          http.AbortableRequest(method, uri, abortTrigger: abort.future)
+            ..headers.addAll({
+              'Accept': 'application/json',
+              'API-Version': protocolVersion,
+              if (token != null) 'Authorization': 'Bearer $token',
+              if (body != null) 'Content-Type': 'application/json',
+            });
       if (body != null) request.body = jsonEncode(body);
-      final streamed = await _client.send(request);
-      final response = await http.Response.fromStream(streamed);
+      final response = await _client
+          .send(request)
+          .then(http.Response.fromStream)
+          .timeout(
+            requestTimeout,
+            onTimeout: () {
+              // Stop this exchange, preserving other requests and the connection pool.
+              abort.complete();
+              throw TimeoutException(
+                'AppBase request timed out',
+                requestTimeout,
+              );
+            },
+          );
       final decoded = response.body.isEmpty
           ? <String, Object?>{}
           : jsonDecode(response.body);

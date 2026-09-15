@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4
+
+- Recover failed OIDC initialization, bound network phases without timing out browser interaction, and preserve serialized refresh and session invalidation.
+
 ## 0.1.3
 
 - Upgrade to the first-party Darwin OIDC implementation so repeated RFC 8707
