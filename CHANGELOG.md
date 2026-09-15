@@ -89,3 +89,8 @@
 - Clear local projections after deletion acceptance and create a blank account on re-registration.
 - Name local synchronization progress syncState independently from server accounts/devices.
 - Release Dart packages 0.3.0 with the account session adapter and secure binding storage.
+
+## 0.10.1
+
+- Send the required JSON content type for RevenueCat customer deletion.
+- Preserve the provider's numeric error code for safe cleanup diagnostics.
