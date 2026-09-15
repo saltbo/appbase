@@ -3,6 +3,38 @@ import 'package:appbase_client/appbase_client.dart';
 import 'package:test/test.dart';
 
 void main() {
+  for (final initiallyFails in [false, true]) {
+    test(
+      'restored deleted account finishes pending cleanup before forgetting credentials (failure=$initiallyFails)',
+      () async {
+        final session = _Session(_account());
+        final api = _Api()
+          ..remoteDeleted = true
+          ..deleteFails = initiallyFails;
+        final persistence = _Persistence(_account());
+        final engine = AppBaseSyncEngine(
+          session: session,
+          api: api,
+          persistence: persistence,
+          batchIds: _BatchIds(),
+        );
+        await engine.restore();
+        await expectLater(engine.syncNow(), throwsA(isA<AppBaseException>()));
+        expect(api.deletionCalls, 1);
+        if (initiallyFails) {
+          expect(session.value, isNotNull);
+          expect(persistence.deleted, false);
+          expect(engine.state.phase, AppBaseSyncPhase.failed);
+          api.deleteFails = false;
+          await engine.deleteAccount();
+        }
+        expect(persistence.deleted, true);
+        expect(session.value, isNull);
+        await engine.close();
+      },
+    );
+  }
+
   test(
     'deletion drains in-flight sync, suppresses new runs and clears local state before logout',
     () async {
@@ -128,6 +160,7 @@ final class _BatchIds implements AppBaseBatchIdGenerator {
 
 final class _Api implements AppBaseApi, AppBaseAccountDeletionApi {
   bool deleteFails = false;
+  bool remoteDeleted = false;
   int deletionCalls = 0;
   Future<void>? deletionGate;
   @override
@@ -163,6 +196,13 @@ final class _Api implements AppBaseApi, AppBaseAccountDeletionApi {
     String? pageToken,
     int? pageSize,
   }) async {
+    if (remoteDeleted) {
+      throw const AppBaseApiException(
+        kind: AppBaseFailureKind.authorization,
+        code: 'ACCOUNT_DELETED',
+        message: 'Deleted',
+      );
+    }
     pullTokens.add(pageToken);
     if (pullTokens.length == 1) {
       return const AppBaseChangePage(

@@ -104,8 +104,9 @@ final class AppBaseSyncEngine {
     if (current == null) return;
     var account = await persistence.saveAccount(current);
     _set(AppBaseSyncState(phase: AppBaseSyncPhase.syncing, account: account));
+    String? token;
     try {
-      final token = await session.accessToken();
+      token = await session.accessToken();
       if (token == null) {
         throw const AppBaseApiException(
           kind: AppBaseFailureKind.authentication,
@@ -134,13 +135,37 @@ final class AppBaseSyncEngine {
     } on AppBaseException catch (error) {
       if (error is AppBaseApiException && error.code == 'ACCOUNT_DELETED') {
         _deletionStarted = true;
-        final cleanup = persistence;
-        if (cleanup is AppBaseAccountDeletionPersistence) {
-          await (cleanup as AppBaseAccountDeletionPersistence).deleteAccount(
-            account,
+        try {
+          // Another device (or an interrupted deletion) may still have provider
+          // cleanup pending. Keep this credential until ensure-deleted succeeds.
+          final deletionApi = api;
+          if (deletionApi is AppBaseAccountDeletionApi && token != null) {
+            await (deletionApi as AppBaseAccountDeletionApi).deleteAccount(
+              accessToken: token,
+            );
+          }
+          final cleanup = persistence;
+          if (cleanup is AppBaseAccountDeletionPersistence) {
+            await (cleanup as AppBaseAccountDeletionPersistence).deleteAccount(
+              account,
+            );
+            await session.signOut();
+            _set(const AppBaseSyncState.idle());
+          }
+        } on Object catch (cleanupError) {
+          final failure = cleanupError is AppBaseException
+              ? cleanupError
+              : AppBaseLocalException(
+                  message: 'Account deletion could not finish: $cleanupError',
+                );
+          _set(
+            AppBaseSyncState(
+              phase: AppBaseSyncPhase.failed,
+              account: account,
+              error: failure,
+            ),
           );
-          await session.signOut();
-          _set(const AppBaseSyncState.idle());
+          throw failure;
         }
         rethrow;
       }

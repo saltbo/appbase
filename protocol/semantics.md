@@ -132,3 +132,6 @@ cleanup, removing them after the provider accepts deletion. RevenueCat deletion 
 The host must fence its other authenticated APIs and purge any additional owned data stores.
 The IdP account and unrelated applications are outside this operation. Subscription cancellation
 is separately controlled by the store and must be explained in the confirmation UI.
+
+On `ACCOUNT_DELETED`, clients with deletion support repeat DELETE before dropping the credential.
+If pending provider cleanup fails, retain the session and show a retryable deletion error.
