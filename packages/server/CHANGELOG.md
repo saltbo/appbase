@@ -1,3 +1,7 @@
+## 0.3.0
+
+Application account lifecycle integration, account-scoped persistence and explicit registration.
+
 ## 0.4.0
 
 - Use RevenueCat promotional entitlements for complimentary membership, including lifetime access and isolated payment identities.

@@ -1,3 +1,7 @@
+## 0.3.0
+
+Application account lifecycle integration, account-scoped persistence and explicit registration.
+
 ## 0.2.1
 
 - Finish interrupted remote deletion before removing credentials after session restore.

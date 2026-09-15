@@ -1,3 +1,7 @@
+## 0.3.0
+
+Application account lifecycle integration, account-scoped persistence and explicit registration.
+
 ## Unreleased
 
 - Name installation synchronization metadata `syncState` / `appbase_sync_state`.
