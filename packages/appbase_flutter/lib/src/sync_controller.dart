@@ -4,7 +4,6 @@ import 'dart:math';
 
 import 'package:appbase_client/appbase_client.dart';
 import 'package:flutter/foundation.dart';
-import 'session_events.dart';
 
 final class AppBaseSyncController extends ChangeNotifier {
   AppBaseSyncController({
@@ -21,12 +20,13 @@ final class AppBaseSyncController extends ChangeNotifier {
     });
     final session = engine.session;
     if (session is AppBaseSessionEvents) {
-      _sessionSubscription = session.invalidations.listen((_) {
-        _sessionInvalidated = true;
-        _timer?.cancel();
-        _state = const AppBaseSyncState.idle();
-        if (!_disposed) notifyListeners();
-      });
+      _sessionSubscription = (session as AppBaseSessionEvents).invalidations
+          .listen((_) {
+            _sessionInvalidated = true;
+            _timer?.cancel();
+            _state = const AppBaseSyncState.idle();
+            if (!_disposed) notifyListeners();
+          });
     }
     _retrySubscription = retrySignals?.listen(
       (_) => scheduleSync(Duration.zero),
@@ -64,6 +64,11 @@ final class AppBaseSyncController extends ChangeNotifier {
     }
     _sessionInvalidated = false;
     await engine.signIn();
+  }
+
+  Future<void> registerAccount() async {
+    _sessionInvalidated = false;
+    await engine.registerAccount();
   }
 
   Future<void> syncNow() async {

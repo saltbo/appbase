@@ -44,7 +44,11 @@ export interface SecretCodec {
   ): Promise<JsonObject>;
 }
 
-export type Principal = { sub: string; scopes: readonly string[] };
+export type Principal = {
+  sub: string;
+  scopes: readonly string[];
+  accountId?: string;
+};
 
 export interface AuthVerifier {
   verify(accessToken: string): Promise<Principal>;

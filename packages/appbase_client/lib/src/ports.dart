@@ -72,3 +72,28 @@ abstract interface class AppBaseAccountDeletionPersistence {
 abstract interface class AppBaseCollectionDeletionAdapter {
   Future<void> deleteAccount(AppBaseAccount account);
 }
+
+abstract interface class AppBaseAccountApi {
+  Future<Map<String, Object?>> accountStatus(String identityToken);
+  Future<Map<String, Object?>> openAccountSession({
+    required String identityToken,
+    required String deviceId,
+    String? accountId,
+    bool register,
+  });
+  Future<void> revokeAccountSession(String token);
+}
+
+abstract interface class AppBaseAccountBindingStore {
+  Future<Map<String, Object?>?> read();
+  Future<void> write(Map<String, Object?> value);
+  Future<void> clear();
+}
+
+abstract interface class AppBaseRegistrationSession {
+  Future<AppBaseAccount> register();
+}
+
+abstract interface class AppBaseSessionEvents {
+  Stream<void> get invalidations;
+}

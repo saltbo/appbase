@@ -2,25 +2,31 @@ import 'package:drift/drift.dart';
 
 final class AppBaseDriftTables {
   const AppBaseDriftTables({
-    this.accounts = 'appbase_accounts',
+    String? syncState,
+    String? accounts,
     this.records = 'appbase_records',
     this.outbox = 'appbase_outbox',
     this.checkpoint = 'checkpoint',
-  });
+  }) : assert(syncState == null || accounts == null),
+       syncState = syncState ?? accounts ?? 'appbase_sync_state';
 
   const AppBaseDriftTables.legacySublyra()
-    : accounts = 'sync_accounts',
+    : syncState = 'sync_accounts',
       records = 'sync_records',
       outbox = 'sync_outbox',
       checkpoint = 'cursor';
 
-  final String accounts;
+  /// Per-identity synchronization state on this installation, not an account registry.
+  final String syncState;
+
+  /// Compatibility alias for hosts that supplied a table name before 0.2.1.
+  String get accounts => syncState;
   final String records;
   final String outbox;
   final String checkpoint;
 
   void validate() {
-    for (final name in [accounts, records, outbox, checkpoint]) {
+    for (final name in [syncState, records, outbox, checkpoint]) {
       if (!RegExp(r'^[a-z][a-z0-9_]*$').hasMatch(name)) {
         throw ArgumentError.value(name, 'table name', 'is not a safe SQL name');
       }
@@ -34,8 +40,28 @@ extension AppBaseDriftSchema on GeneratedDatabase {
   }) async {
     tables.validate();
     await transaction(() async {
+      if (tables.syncState == 'appbase_sync_state') {
+        final existing = await customSelect(
+          "SELECT name FROM sqlite_master WHERE type = 'table' "
+          "AND name IN ('appbase_accounts', 'appbase_sync_state')",
+        ).get();
+        final names = existing.map((row) => row.read<String>('name')).toSet();
+        if (names.contains('appbase_accounts')) {
+          if (names.contains('appbase_sync_state')) {
+            throw StateError(
+              'Both legacy and current AppBase sync state exist.',
+            );
+          }
+          await customStatement(
+            'ALTER TABLE appbase_accounts RENAME TO appbase_sync_state',
+          );
+          await customStatement(
+            'DROP INDEX IF EXISTS appbase_accounts_one_active',
+          );
+        }
+      }
       await customStatement('''
-        CREATE TABLE IF NOT EXISTS ${tables.accounts} (
+        CREATE TABLE IF NOT EXISTS ${tables.syncState} (
           issuer TEXT NOT NULL,
           subject TEXT NOT NULL,
           device_id TEXT NOT NULL,
@@ -47,8 +73,8 @@ extension AppBaseDriftSchema on GeneratedDatabase {
         )
       ''');
       await customStatement('''
-        CREATE UNIQUE INDEX IF NOT EXISTS ${tables.accounts}_one_active
-        ON ${tables.accounts}(active) WHERE active = 1
+        CREATE UNIQUE INDEX IF NOT EXISTS ${tables.syncState}_one_active
+        ON ${tables.syncState}(active) WHERE active = 1
       ''');
       await customStatement('''
         CREATE TABLE IF NOT EXISTS ${tables.records} (

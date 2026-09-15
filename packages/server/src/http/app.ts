@@ -1,4 +1,9 @@
 import {
+  AccountLifecycleError,
+  accountOwner,
+  type AccountService,
+} from "../usecases/accounts.js";
+import {
   AccountDeletedError,
   type AccountDeletionService,
 } from "../usecases/account_deletion.js";
@@ -91,6 +96,7 @@ export type AppBaseHttpOptions<TBindings extends object> = {
     repository: (bindings: TBindings) => MembershipRepository;
     service?: (bindings: TBindings) => MembershipService;
   };
+  accounts?: (bindings: TBindings) => AccountService;
   accountDeletion?: (bindings: TBindings) => AccountDeletionService;
   legacyV1?: boolean;
   problemTypeBase?: string;
@@ -134,6 +140,21 @@ export function createAppBase<TBindings extends object>(
 
   app.onError((error, context) => {
     options.reportError?.(error, context.get("requestId"));
+    if (error instanceof z.ZodError)
+      return validationProblem(
+        options,
+        context,
+        "Invalid account request.",
+        error.issues,
+      );
+    if (error instanceof AccountLifecycleError)
+      return problem(
+        options,
+        context,
+        error.code === "ACCOUNT_SESSION_INVALID" ? 401 : 409,
+        error.code,
+        error.message,
+      );
     if (error instanceof AccountDeletedError)
       return problem(options, context, 403, "ACCOUNT_DELETED", error.message);
     if (error instanceof InvalidCursorError) {
@@ -190,7 +211,46 @@ export function createAppBase<TBindings extends object>(
     }),
   );
 
-  if (options.accountDeletion) {
+  if (options.accounts) {
+    const identity = async (context: AppBaseContext<TBindings>) => {
+      requireProtocolVersion(options, context);
+      const principal = options.principal(context);
+      if (principal.accountId)
+        throw new AuthenticationError(
+          "Use identity-provider authentication for registration or session renewal.",
+        );
+      if (
+        options.authorize &&
+        !(await options.authorize(principal, "sync:write"))
+      )
+        throw new AuthorizationError();
+      return principal;
+    };
+    app.get("/account", async (context) => {
+      const principal = await identity(context);
+      return context.json(
+        await options.accounts!(context.env).status(principal),
+        200,
+        { "Cache-Control": "no-store" },
+      );
+    });
+    for (const path of ["/account", "/account/sessions"] as const) {
+      app.post(path, async (context) => {
+        const principal = await identity(context);
+        const input = z
+          .object({
+            deviceId: identifierSchema,
+            accountId: identifierSchema.optional(),
+          })
+          .strict()
+          .parse(await readJson(context.req.raw, 4096));
+        const result = await options.accounts!(context.env).open(principal, {
+          ...input,
+          register: path === "/account",
+        });
+        return context.json(result, 201, { "Cache-Control": "no-store" });
+      });
+    }
     app.delete("/account", async (context) => {
       requireProtocolVersion(options, context);
       const principal = options.principal(context);
@@ -199,7 +259,36 @@ export function createAppBase<TBindings extends object>(
         !(await options.authorize(principal, "sync:write"))
       )
         throw new AuthorizationError();
-      await options.accountDeletion!(context.env).delete(principal.sub);
+      const service = options.accounts!(context.env);
+      const result = await service.requestDeletion(principal);
+      context.executionCtx.waitUntil(
+        service.process(result.accountId).catch(() => {}),
+      );
+      return context.json(result, 202, {
+        "Cache-Control": "no-store",
+        Location: new URL("account", context.req.url).toString(),
+        "Retry-After": "5",
+      });
+    });
+    app.delete("/account/sessions/current", async (context) => {
+      requireProtocolVersion(options, context);
+      const token = context.req.header("Authorization")?.slice(7) ?? "";
+      const service = options.accounts!(context.env);
+      await service.repository.revokeSession(await service.crypto.hash(token));
+      return context.body(null, 204, { "Cache-Control": "no-store" });
+    });
+  } else if (options.accountDeletion) {
+    app.delete("/account", async (context) => {
+      requireProtocolVersion(options, context);
+      const principal = options.principal(context);
+      if (
+        options.authorize &&
+        !(await options.authorize(principal, "sync:write"))
+      )
+        throw new AuthorizationError();
+      await options.accountDeletion!(context.env).delete(
+        accountOwner(principal),
+      );
       return context.body(null, 204, { "Cache-Control": "no-store" });
     });
   }
@@ -255,7 +344,7 @@ export function createAppBase<TBindings extends object>(
     }
     const results = await pushMutations(
       options.createDeps(context.env),
-      principal.sub,
+      accountOwner(principal),
       parsed.data.mutations.map(toMutation),
     );
     return context.json(
@@ -286,7 +375,7 @@ export function createAppBase<TBindings extends object>(
     }
     const result = await pullChanges(
       options.createDeps(context.env),
-      principal.sub,
+      accountOwner(principal),
       context.req.query("pageToken"),
       pageSize.data,
     );
@@ -320,9 +409,13 @@ export function createAppBase<TBindings extends object>(
             ? options.membership!.config(context.env)
             : options.membership!.config,
         );
-      return context.json(await service.snapshot(principal.sub), 200, {
-        "Cache-Control": "private, no-store",
-      });
+      return context.json(
+        await service.snapshot(accountOwner(principal)),
+        200,
+        {
+          "Cache-Control": "private, no-store",
+        },
+      );
     });
   }
 
@@ -361,7 +454,7 @@ function registerLegacyRoutes<TBindings extends object>(
     }
     const results = await pushMutations(
       options.createDeps(context.env),
-      principal.sub,
+      accountOwner(principal),
       parsed.data.mutations.map(toMutation),
     );
     return context.json({ results }, 200, {
@@ -385,7 +478,7 @@ function registerLegacyRoutes<TBindings extends object>(
       );
     const result = await pullChanges(
       options.createDeps(context.env),
-      principal.sub,
+      accountOwner(principal),
       context.req.query("cursor"),
       limit.data,
     );
@@ -411,7 +504,7 @@ function registerLegacyRoutes<TBindings extends object>(
             : options.membership!.config,
         );
       return context.json(
-        { data: await service.snapshot(principal.sub) },
+        { data: await service.snapshot(accountOwner(principal)) },
         200,
         {
           "Cache-Control": "private, no-store",
@@ -427,14 +520,19 @@ async function authorizedPrincipal<TBindings extends object>(
   context: AppBaseContext<TBindings>,
   capability: AppBaseCapability,
 ): Promise<Principal> {
-  const principal = options.principal(context);
+  const identity = options.principal(context);
+  const principal = options.accounts
+    ? await options.accounts(context.env).requireAccount(identity)
+    : identity;
   if (
     options.authorize !== undefined &&
     !(await options.authorize(principal, capability))
   ) {
     throw new AuthorizationError();
   }
-  await options.accountDeletion?.(context.env).requireActive(principal.sub);
+  await options
+    .accountDeletion?.(context.env)
+    .requireActive(accountOwner(principal));
   return principal;
 }
 

@@ -1,3 +1,4 @@
+import { accountOwner } from "../usecases/accounts.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { bodyLimit } from "hono/body-limit";
@@ -159,14 +160,14 @@ export function createBilling<B extends object>(
     const service = options.service(c.env);
     await service.catalog();
     return c.json({
-      appUserId: await service.repository.identity(p.sub),
+      appUserId: await service.repository.identity(accountOwner(p)),
       sdkKeys: options.sdkKeys(c.env),
-      state: await service.repository.state(p.sub),
+      state: await service.repository.state(accountOwner(p)),
     });
   });
   app.post("/synchronizations", async (c) => {
     const p = await principal(c.req.raw, c.env, "billing:write");
-    return c.json(await options.service(c.env).synchronize(p.sub));
+    return c.json(await options.service(c.env).synchronize(accountOwner(p)));
   });
   app.post("/webhooks/revenuecat", async (c) => {
     if (

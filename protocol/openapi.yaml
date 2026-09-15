@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AppBase Synchronization API
-  version: "2026-08-17"
+  version: "2026-09-15"
   description: Cloudflare-native private record synchronization protocol.
   license:
     name: Apache-2.0
@@ -16,24 +16,80 @@ security:
   - oauth2: [appbase:read, appbase:write]
 paths:
   /appbase/account:
-    delete:
-      summary: Permanently delete the application account
-      description: Optional host capability. Erases application data and requests provider customer deletion without deleting the identity provider account. Repeating the request resumes incomplete cleanup. Store subscriptions are managed separately.
-      operationId: deleteAccount
-      security:
-        - oauth2: [appbase:write]
+    get:
+      summary: Resolve the current application account using an IdP token
+      operationId: getAccount
       parameters:
         - $ref: "#/components/parameters/ApiVersion"
       responses:
-        "204":
-          description: Application data erased and provider deletion accepted.
-        "400":
+        "200":
+          description: Account status is active, deleting, or unregistered. No account is created by this request.
+        "401":
           $ref: "#/components/responses/Problem"
+    post:
+      summary: Explicitly register an empty application account
+      operationId: registerAccount
+      parameters:
+        - $ref: "#/components/parameters/ApiVersion"
+      requestBody:
+        $ref: "#/components/requestBodies/AccountSession"
+      responses:
+        "201":
+          description: New accountId, opaque accessToken, and Unix expiresAt for this device.
+        "409":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+    delete:
+      summary: Accept application account deletion
+      description: Requires an application device session. Atomically blocks account access and erases application records. Provider cleanup continues durably in the background. Does not delete the IdP identity or cancel store subscriptions.
+      operationId: deleteAccount
+      security:
+        - deviceSession: []
+      parameters:
+        - $ref: "#/components/parameters/ApiVersion"
+      responses:
+        "202":
+          description: Deletion accepted. GET account with an IdP token observes completion as unregistered.
+          headers:
+            Location:
+              schema:
+                type: string
+            Retry-After:
+              schema:
+                type: integer
+        "401":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /appbase/account/sessions:
+    post:
+      summary: Open or renew a device session using an IdP token
+      description: Renewal supplies the original accountId and never follows a replacement account.
+      operationId: createAccountSession
+      parameters:
+        - $ref: "#/components/parameters/ApiVersion"
+      requestBody:
+        $ref: "#/components/requestBodies/AccountSession"
+      responses:
+        "201":
+          description: AccountId, accessToken and Unix expiresAt. Tokens expire after 30 minutes.
         "401":
           $ref: "#/components/responses/Problem"
         "403":
           $ref: "#/components/responses/Problem"
-        "500":
+        "409":
+          $ref: "#/components/responses/Problem"
+  /appbase/account/sessions/current:
+    delete:
+      summary: Revoke the current device session
+      operationId: revokeAccountSession
+      security:
+        - deviceSession: []
+      responses:
+        "204":
+          description: Device session revoked.
+        "401":
           $ref: "#/components/responses/Problem"
   /billing/configuration:
     $ref: "./billing.openapi.json#/paths/~1billing~1configuration"
@@ -168,7 +224,24 @@ paths:
         "403":
           $ref: "#/components/responses/Problem"
 components:
+  requestBodies:
+    AccountSession:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [deviceId]
+            properties:
+              deviceId:
+                type: string
+              accountId:
+                type: string
   securitySchemes:
+    deviceSession:
+      type: http
+      scheme: bearer
+      description: Opaque account incarnation and device session issued using the IdP grant.
     revenuecatWebhook:
       $ref: "./billing.openapi.json#/components/securitySchemes/revenuecatWebhook"
     oauth2:

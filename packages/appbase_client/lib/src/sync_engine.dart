@@ -1,3 +1,4 @@
+import 'account_session.dart';
 import 'dart:async';
 
 import 'errors.dart';
@@ -27,7 +28,9 @@ final class AppBaseSyncEngine {
   Stream<AppBaseSyncState> get states => _states.stream;
 
   Future<AppBaseAccount?> restore() async {
-    final account = await session.account();
+    final account = session is AppBaseAccountSession
+        ? await (session as AppBaseAccountSession).restoreLegacy()
+        : await session.account();
     if (account == null) return null;
     final saved = await persistence.saveAccount(account);
     await persistence.seedIfNeeded(saved);
@@ -42,6 +45,20 @@ final class AppBaseSyncEngine {
     _set(AppBaseSyncState.idle(account: account));
     await syncNow();
     return state.account ?? account;
+  }
+
+  Future<AppBaseAccount> registerAccount() async {
+    if (session is! AppBaseRegistrationSession) {
+      throw StateError('Registration is unavailable.');
+    }
+    _deletionStarted = false;
+    final account = await persistence.saveAccount(
+      await (session as AppBaseRegistrationSession).register(),
+    );
+    await persistence.seedIfNeeded(account);
+    _set(AppBaseSyncState.idle(account: account));
+    await syncNow();
+    return account;
   }
 
   Future<void> signOut() async {
@@ -86,11 +103,20 @@ final class AppBaseSyncEngine {
     }
     final account = await session.account();
     if (account == null) throw StateError('Sign in to delete your account.');
-    final token = await session.accessToken();
-    if (token == null) throw StateError('Sign in to delete your account.');
-    await (deletionApi as AppBaseAccountDeletionApi).deleteAccount(
-      accessToken: token,
-    );
+    try {
+      final token = await session.accessToken();
+      if (token == null) throw StateError('Sign in to delete your account.');
+      await (deletionApi as AppBaseAccountDeletionApi).deleteAccount(
+        accessToken: token,
+      );
+    } on AppBaseApiException catch (error) {
+      // A previous accepted DELETE can outlive the device token while local
+      // cleanup is interrupted. Renewal of that pinned account proves deletion.
+      if (session is! AppBaseAccountSession ||
+          !['ACCOUNT_DELETED', 'ACCOUNT_DELETING'].contains(error.code)) {
+        rethrow;
+      }
+    }
     await (deletionPersistence as AppBaseAccountDeletionPersistence)
         .deleteAccount(account);
     await session.signOut();
@@ -133,16 +159,22 @@ final class AppBaseSyncEngine {
       account = await _pullAll(account, token, config.maxChangesPerPage);
       _set(AppBaseSyncState.idle(account: account));
     } on AppBaseException catch (error) {
-      if (error is AppBaseApiException && error.code == 'ACCOUNT_DELETED') {
+      if (error is AppBaseApiException &&
+          [
+            'ACCOUNT_DELETED',
+            'ACCOUNT_DELETING',
+            'ACCOUNT_SESSION_INVALID',
+          ].contains(error.code)) {
         _deletionStarted = true;
         try {
-          // Another device (or an interrupted deletion) may still have provider
-          // cleanup pending. Keep this credential until ensure-deleted succeeds.
-          final deletionApi = api;
-          if (deletionApi is AppBaseAccountDeletionApi && token != null) {
-            await (deletionApi as AppBaseAccountDeletionApi).deleteAccount(
-              accessToken: token,
-            );
+          if (session is! AppBaseAccountSession) {
+            // Compatibility for hosts still using the synchronous v0.9 deletion API.
+            final deletionApi = api;
+            if (deletionApi is AppBaseAccountDeletionApi && token != null) {
+              await (deletionApi as AppBaseAccountDeletionApi).deleteAccount(
+                accessToken: token,
+              );
+            }
           }
           final cleanup = persistence;
           if (cleanup is AppBaseAccountDeletionPersistence) {

@@ -39,3 +39,10 @@ export {
   AccountDeletedError,
   type AccountDeletionRepository,
 } from "./usecases/account_deletion.js";
+
+export {
+  AccountService,
+  AccountLifecycleError,
+  accountOwner,
+  type AccountRepository,
+} from "./usecases/accounts.js";
