@@ -1,6 +1,7 @@
 import { AuthorizationError } from "./ports.js";
 
 export interface AccountDeletionRepository {
+  complete?(ownerSub: string): Promise<void>;
   isDeleted(ownerSub: string): Promise<boolean>;
   begin(ownerSub: string): Promise<void>;
   pendingBillingIdentities(ownerSub: string): Promise<readonly string[]>;
@@ -32,6 +33,7 @@ export class AccountDeletionService {
       await this.deleteBillingIdentity(identity);
       await this.repository.completeBillingIdentity(ownerSub, identity);
     }
+    await this.repository.complete?.(ownerSub);
   }
 }
 

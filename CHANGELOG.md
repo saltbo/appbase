@@ -81,3 +81,11 @@
   encryption, membership primitives, and deployable Worker template.
 - Add the pure Dart client and sync engine, transaction-safe Drift persistence,
   and Flutter lifecycle, secure installation identity, and OIDC adapters.
+
+## 0.10.0
+
+- Add explicit application registration, expiring device sessions and account incarnation isolation.
+- Consolidate deletion state into accounts; finish provider cleanup through scheduled retries.
+- Clear local projections after deletion acceptance and create a blank account on re-registration.
+- Name local synchronization progress syncState independently from server accounts/devices.
+- Release Dart packages 0.3.0 with the account session adapter and secure binding storage.

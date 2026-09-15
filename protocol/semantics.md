@@ -116,22 +116,37 @@ compression changing response ETags.
 Existing legacy membership grants remain until explicitly migrated, preserving
 previously issued membership.
 
-## Application account deletion
+## Application account lifecycle (2026-09-15)
 
-Hosts may enable `DELETE /appbase/account` using `AccountDeletionService`.
-Authenticate the current owner with write authorization; never accept a subject in the request body.
-Apply migration 0007 before enabling the route. Deletion first atomically fences writes and erases all
-sync history, payload encryption keys, membership data and both environment billing associations.
-A minimal pseudonymous subject fence remains solely to reject old and refreshed IdP sessions.
-It must not contain profile or application content. No implicit registration may remove this fence.
-An explicit registration lifecycle is a separate host policy, not an effect of token refresh.
+Hosts enable AccountService with migration 0008 and a scheduled cleanup handler.
+One deployment has one configured OIDC issuer; `subject` is scoped to that issuer.
+GET account resolves identity without creating data. POST account explicitly creates
+an empty account. POST account/sessions exchanges the existing OIDC grant for a
+30-minute opaque device token; only its hash is stored. Renewal is pinned to the
+original accountId. Business APIs authorize the account's active state on every request.
 
-External cleanup resumes on repeated DELETE. Retain only billing identifiers needed for pending
-cleanup, removing them after the provider accepts deletion. RevenueCat deletion is asynchronous;
-204 means local erasure and provider acceptance, not synchronous completion in RevenueCat.
-The host must fence its other authenticated APIs and purge any additional owned data stores.
-The IdP account and unrelated applications are outside this operation. Subscription cancellation
-is separately controlled by the store and must be explained in the confirmation UI.
+DELETE account returns 202 after atomically setting deleting and erasing sync history,
+keys, grants and usage. Existing billing associations retain cleanup identifiers until
+provider deletion succeeds. Scheduled cleanup retries without client participation;
+next_cleanup_at and cleanup_attempts track progress. Provider acceptance completes the
+application lifecycle; it does not promise synchronous physical deletion by the provider.
+The old account becomes deleted and its subject is detached. A subsequent explicit
+registration creates a fresh ID and billing customer. Realmroot remains unchanged.
 
-On `ACCOUNT_DELETED`, clients with deletion support repeat DELETE before dropping the credential.
-If pending provider cleanup fails, retain the session and show a retryable deletion error.
+Device tokens lose business access immediately. Their expiring rows allow a lost DELETE
+response to be retried against the same old account, never its replacement. Cron removes
+expired rows. The deleted account contains no subject or product content for new accounts.
+Legacy account IDs retain the original subject to preserve encrypted payload AAD and cursor
+compatibility; these minimal legacy fences prevent old clients from resurrecting data.
+No new subject-based deletion table or cleanup table is retained.
+
+Clients erase local data and log out after 202. ACCOUNT_DELETED, ACCOUNT_DELETING and
+ACCOUNT_SESSION_INVALID also clear the bound local account. New registration clears stale
+local projections/outboxes before creating the replacement. Store subscription cancellation
+is separate. Migration 0008 cannot safely roll back to a server requiring tables 0007;
+recover through a forward fix or coordinated full database/code restore.
+
+Legacy clients may access only migrated active accounts with their original ID. They
+cannot register new accounts or address replacements with a bare IdP token. Hosts choosing
+the older AccountDeletionService-only route retain its pre-0008 204 contract; hosts with
+migration 0008 must configure AccountService and the account-aware verifier together.

@@ -6,3 +6,5 @@ export 'src/sync_controller.dart';
 
 export 'src/session_events.dart';
 export 'src/oidc_manager.dart';
+
+export 'src/account_binding_store.dart';

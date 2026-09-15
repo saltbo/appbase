@@ -46,7 +46,7 @@ final class AppBaseDriftPersistence
 
   @override
   Future<void> deleteAccount(AppBaseAccount account) async {
-    _deletedAccounts.add((account.issuer, account.subject));
+    _deletedAccounts.add((account.issuer, account.storageKey));
     for (final adapter in _adapters.values) {
       if (adapter is AppBaseCollectionDeletionAdapter) {
         await (adapter as AppBaseCollectionDeletionAdapter).deleteAccount(
@@ -60,7 +60,7 @@ final class AppBaseDriftPersistence
       for (final table in [tables.outbox, tables.records, tables.syncState]) {
         await database.customStatement(
           'DELETE FROM $table WHERE issuer = ? AND subject = ?',
-          [account.issuer.toString(), account.subject],
+          [account.issuer.toString(), account.storageKey],
         );
       }
     });
@@ -77,7 +77,7 @@ final class AppBaseDriftPersistence
     final switches =
         active != null &&
         (active.read<String>('issuer') != account.issuer.toString() ||
-            active.read<String>('subject') != account.subject);
+            active.read<String>('subject') != account.storageKey);
     if (switches) {
       final old = AppBaseAccount(
         issuer: Uri.parse(active.read<String>('issuer')),
@@ -107,7 +107,7 @@ final class AppBaseDriftPersistence
         ''',
         [
           saved.issuer.toString(),
-          saved.subject,
+          saved.storageKey,
           saved.deviceId,
           saved.checkpoint,
           existing?['status'] ?? 'active',
@@ -135,7 +135,7 @@ final class AppBaseDriftPersistence
         variables: [
           const Variable<String>('seeded'),
           Variable<String>(account.issuer.toString()),
-          Variable<String>(account.subject),
+          Variable<String>(account.storageKey),
         ],
       );
     });
@@ -161,7 +161,7 @@ final class AppBaseDriftPersistence
       ''',
           variables: [
             Variable<String>(account.issuer.toString()),
-            Variable<String>(account.subject),
+            Variable<String>(account.storageKey),
             Variable<int>(limit),
           ],
         )
@@ -193,7 +193,7 @@ final class AppBaseDriftPersistence
         variables: [
           Variable<String>(result.mutationId),
           Variable<String>(account.issuer.toString()),
-          Variable<String>(account.subject),
+          Variable<String>(account.storageKey),
         ],
       );
     }
@@ -230,7 +230,7 @@ final class AppBaseDriftPersistence
           ''',
           [
             account.issuer.toString(),
-            account.subject,
+            account.storageKey,
             change.collection,
             change.recordId,
             change.revision,
@@ -250,7 +250,7 @@ final class AppBaseDriftPersistence
           Variable<String>(page.checkpoint),
           Variable<int>(_clock().millisecondsSinceEpoch),
           Variable<String>(account.issuer.toString()),
-          Variable<String>(account.subject),
+          Variable<String>(account.storageKey),
         ],
       );
     });
@@ -267,7 +267,7 @@ final class AppBaseDriftPersistence
         'UPDATE ${tables.outbox} SET attempt_count = attempt_count + 1 WHERE issuer = ? AND subject = ?',
         variables: [
           Variable<String>(account.issuer.toString()),
-          Variable<String>(account.subject),
+          Variable<String>(account.storageKey),
         ],
       );
     });
@@ -285,7 +285,7 @@ final class AppBaseDriftPersistence
     }
     await database.transaction(() async {
       // A callback may have captured the old session before deletion/sign-out.
-      if (_deletedAccounts.contains((account.issuer, account.subject))) {
+      if (_deletedAccounts.contains((account.issuer, account.storageKey))) {
         throw const AppBaseLocalException(
           message: 'The application account was deleted.',
         );
@@ -316,7 +316,7 @@ final class AppBaseDriftPersistence
       ''',
           variables: [
             Variable<String>(account.issuer.toString()),
-            Variable<String>(account.subject),
+            Variable<String>(account.storageKey),
             Variable<String>(mutation.collection),
             Variable<String>(mutation.recordId),
           ],
@@ -330,7 +330,7 @@ final class AppBaseDriftPersistence
       ''',
           variables: [
             Variable<String>(account.issuer.toString()),
-            Variable<String>(account.subject),
+            Variable<String>(account.storageKey),
             Variable<String>(mutation.collection),
             Variable<String>(mutation.recordId),
           ],
@@ -352,7 +352,7 @@ final class AppBaseDriftPersistence
       [
         _id(),
         account.issuer.toString(),
-        account.subject,
+        account.storageKey,
         account.deviceId,
         mutation.collection,
         mutation.recordId,
@@ -371,7 +371,7 @@ final class AppBaseDriftPersistence
           'SELECT ${tables.checkpoint}, status, last_synced_at FROM ${tables.syncState} WHERE issuer = ? AND subject = ?',
           variables: [
             Variable<String>(account.issuer.toString()),
-            Variable<String>(account.subject),
+            Variable<String>(account.storageKey),
           ],
         )
         .getSingleOrNull();

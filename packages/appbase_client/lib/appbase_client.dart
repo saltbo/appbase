@@ -6,3 +6,5 @@ export 'src/ids.dart';
 export 'src/models.dart';
 export 'src/ports.dart';
 export 'src/sync_engine.dart';
+
+export 'src/account_session.dart';

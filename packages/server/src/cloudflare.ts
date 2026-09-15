@@ -24,3 +24,7 @@ export {
 export { D1BillingRepository } from "./adapters/d1_billing_repository.js";
 
 export { D1AccountDeletionRepository } from "./adapters/d1_account_deletion.js";
+
+export { D1AccountRepository, accountCrypto } from "./adapters/d1_accounts.js";
+
+export { AccountAuthVerifier } from "./adapters/account_auth_verifier.js";

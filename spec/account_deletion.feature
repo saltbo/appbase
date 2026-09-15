@@ -1,22 +1,30 @@
-Feature: Application account deletion
-  Account deletion belongs to the application, independently of its identity provider.
+Feature: Application account lifecycle
+  An application account is independent of its identity provider identity.
 
-  Scenario: Delete application data without deleting the identity provider account
-    Given an authenticated application account with sync and billing data
-    When the owner confirms account deletion
-    Then application records, encryption keys, membership and billing identity are erased
-    And the identity provider account is unchanged
-    And another application account is unchanged
+  Scenario: Explicit registration creates an application account
+    Given an authenticated identity without an active application account
+    When the owner confirms registration
+    Then a new application account and device session are created
+    And ordinary resource requests never register an account
 
-  Scenario: Concurrent requests cannot restore a deleted account
-    Given a request or billing notification started before deletion
-    When the account is deleted before the request persists its result
-    Then the database rejects the stale write
-    And refreshed identity provider tokens do not automatically recreate the account
+  Scenario: Deletion is accepted before provider cleanup finishes
+    Given an active application account on two devices
+    When the owner requests deletion
+    Then the account enters deleting state and both device sessions are revoked
+    And synchronized data and encryption keys are hard deleted
+    And the server retries failed provider cleanup without requiring a client
+    And registration is blocked until cleanup finishes
 
-  Scenario: Provider cleanup can be resumed
-    Given account deletion has blocked application access
-    And the billing provider cleanup failed
-    When the owner retries deletion
-    Then cleanup resumes using the original billing identity
-    And deletion completes only after provider cleanup succeeds
+  Scenario: Register an empty replacement account
+    Given deletion has completed for an identity
+    When the identity confirms registration again
+    Then the replacement has a different application account ID and billing customer ID
+    And the old devices cannot read or write the replacement
+    And the identity provider and other accounts remain unchanged
+
+  Scenario: Upgrade existing account data
+    Given records and encrypted data predate application accounts
+    When the lifecycle migration runs
+    Then their storage owner IDs and encryption contexts remain unchanged
+    And existing active accounts remain usable during client migration
+    And old identity tokens never resolve to a replacement account

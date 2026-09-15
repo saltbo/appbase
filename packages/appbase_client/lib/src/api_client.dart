@@ -7,7 +7,8 @@ import 'errors.dart';
 import 'models.dart';
 import 'ports.dart';
 
-final class AppBaseHttpApi implements AppBaseApi, AppBaseAccountDeletionApi {
+final class AppBaseHttpApi
+    implements AppBaseApi, AppBaseAccountDeletionApi, AppBaseAccountApi {
   AppBaseHttpApi({
     required Uri baseUri,
     http.Client? client,
@@ -20,6 +21,28 @@ final class AppBaseHttpApi implements AppBaseApi, AppBaseAccountDeletionApi {
   final String protocolVersion;
   final http.Client _client;
   final Duration requestTimeout;
+
+  @override
+  Future<Map<String, Object?>> accountStatus(String identityToken) =>
+      _request('GET', 'account', token: identityToken);
+
+  @override
+  Future<Map<String, Object?>> openAccountSession({
+    required String identityToken,
+    required String deviceId,
+    String? accountId,
+    bool register = false,
+  }) => _request(
+    'POST',
+    register ? 'account' : 'account/sessions',
+    token: identityToken,
+    body: {'deviceId': deviceId, 'accountId': ?accountId},
+  );
+
+  @override
+  Future<void> revokeAccountSession(String token) async {
+    await _request('DELETE', 'account/sessions/current', token: token);
+  }
 
   @override
   Future<void> deleteAccount({required String accessToken}) async {

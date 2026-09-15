@@ -115,3 +115,14 @@ representations. Existing hosts remain compatible until enabling the service. Ne
 only expose deletion when the host configures it. Migration 0007 provides a persistent write fence
 for old clients too. After deletion, protected operations return `403 ACCOUNT_DELETED`; an updated
 client erases its local projection and session. Explicit recreation is not automatic.
+
+## Account lifecycle v0.10.0 / Dart 0.3.0
+
+Migration 0008 replaces the two deletion tables with application accounts and
+hashed expiring device sessions. Enable AccountService, AccountAuthVerifier and
+scheduled processDue together. New clients explicitly register and use protocol
+2026-09-15. Legacy protocol remains supported for existing migrated active accounts;
+legacy tokens never address replacement accounts. See protocol/semantics.md.
+Local persistence now names its progress table syncState (legacy accounts alias
+retained), with account.storageKey separating the IdP subject from application IDs.
+Migration rollback requires coordinated code/database recovery; prefer roll-forward.

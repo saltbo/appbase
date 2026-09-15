@@ -10,7 +10,6 @@ import 'package:oidc_default_store/oidc_default_store.dart';
 
 import 'installation_id.dart';
 import 'oidc_manager.dart';
-import 'session_events.dart';
 
 typedef AppBaseRedirectUri = Uri Function();
 typedef AppBaseOidcManagerFactory =

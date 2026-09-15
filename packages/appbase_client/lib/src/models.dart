@@ -46,6 +46,7 @@ final class AppBaseAccount {
     required this.subject,
     required this.deviceId,
     this.checkpoint,
+    this.accountId,
     this.displayName,
     this.email,
     this.avatarUri,
@@ -53,6 +54,8 @@ final class AppBaseAccount {
 
   final Uri issuer;
   final String subject;
+  final String? accountId;
+  String get storageKey => accountId ?? subject;
   final String deviceId;
   final String? checkpoint;
   final String? displayName;
@@ -63,6 +66,7 @@ final class AppBaseAccount {
       AppBaseAccount(
         issuer: issuer,
         subject: subject,
+        accountId: accountId,
         deviceId: deviceId,
         checkpoint: identical(checkpoint, _notProvided)
             ? this.checkpoint
