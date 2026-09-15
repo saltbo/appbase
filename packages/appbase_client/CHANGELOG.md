@@ -1,3 +1,7 @@
+## 0.2.1
+
+- Finish interrupted remote deletion before removing credentials after session restore.
+
 ## 0.2.0
 
 - Support application-scoped account deletion and local identity cleanup.
