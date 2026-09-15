@@ -5,9 +5,9 @@ resolution: workspace
 environment:
   sdk: ^3.8.0
 dependencies:
-  appbase_client: ^0.1.0
-  appbase_drift: ^0.1.0
-  appbase_flutter: ^0.1.0
+  appbase_client: ^0.2.0
+  appbase_drift: ^0.2.0
+  appbase_flutter: ^0.2.0
   flutter:
     sdk: flutter
 dev_dependencies:

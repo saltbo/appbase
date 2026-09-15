@@ -7,6 +7,31 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  test(
+    'account deletion drains billing work and removes the SDK identity',
+    () async {
+      final api = FakeApi();
+      final ui = FakeUi();
+      final controller = BillingController(
+        api: api,
+        ui: ui,
+        refreshMembership: () async {},
+      );
+      await controller.setAccount('owner');
+      ui.pending = Completer<BillingActionResult>();
+      final purchase = controller.purchase();
+      await Future<void>.delayed(Duration.zero);
+      final cleanup = controller.clearAccount();
+      expect(controller.canPurchase, false);
+      expect(ui.clears, 0);
+      ui.pending!.complete(BillingActionResult.completed);
+      await Future.wait([purchase, cleanup]);
+      expect(ui.clears, 1);
+      expect(api.syncs, 1);
+      controller.dispose();
+    },
+  );
+
   test('preserves sandbox prefix for account and synchronization', () async {
     for (final suffix in ['/sandbox', '/sandbox/']) {
       final paths = <String>[];
@@ -261,7 +286,13 @@ class FakeApi implements BillingApi {
   }
 }
 
-class FakeUi implements BillingUi {
+class FakeUi implements BillingUi, BillingIdentityCleanup {
+  int clears = 0;
+  @override
+  Future<void> clearIdentity() async {
+    clears++;
+  }
+
   bool available = true;
   final ids = <String>[];
   int purchases = 0;

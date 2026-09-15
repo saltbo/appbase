@@ -41,6 +41,10 @@ abstract interface class BillingUi {
   Future<void> manage();
 }
 
+abstract interface class BillingIdentityCleanup {
+  Future<void> clearIdentity();
+}
+
 final class HttpBillingApi implements BillingApi {
   HttpBillingApi({
     required this.baseUri,
@@ -155,6 +159,17 @@ final class BillingController extends ChangeNotifier {
       // SDK registration precedes the first server lookup for a new customer.
       await _synchronize(generation);
     });
+  }
+
+  Future<void> clearAccount() async {
+    _account = null;
+    ++_generation;
+    _publish(BillingPhase.idle);
+    await _tail;
+    final cleanup = ui;
+    if (supported && cleanup is BillingIdentityCleanup) {
+      await (cleanup as BillingIdentityCleanup).clearIdentity();
+    }
   }
 
   Future<void> purchase() => _action(

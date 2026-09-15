@@ -22,3 +22,5 @@ export {
 } from "./usecases/ports.js";
 
 export { D1BillingRepository } from "./adapters/d1_billing_repository.js";
+
+export { D1AccountDeletionRepository } from "./adapters/d1_account_deletion.js";

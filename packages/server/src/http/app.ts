@@ -1,3 +1,7 @@
+import {
+  AccountDeletedError,
+  type AccountDeletionService,
+} from "../usecases/account_deletion.js";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 
@@ -87,6 +91,7 @@ export type AppBaseHttpOptions<TBindings extends object> = {
     repository: (bindings: TBindings) => MembershipRepository;
     service?: (bindings: TBindings) => MembershipService;
   };
+  accountDeletion?: (bindings: TBindings) => AccountDeletionService;
   legacyV1?: boolean;
   problemTypeBase?: string;
   observe?: (event: AppBaseRequestEvent) => void;
@@ -129,6 +134,8 @@ export function createAppBase<TBindings extends object>(
 
   app.onError((error, context) => {
     options.reportError?.(error, context.get("requestId"));
+    if (error instanceof AccountDeletedError)
+      return problem(options, context, 403, "ACCOUNT_DELETED", error.message);
     if (error instanceof InvalidCursorError) {
       return problem(
         options,
@@ -182,6 +189,20 @@ export function createAppBase<TBindings extends object>(
       "Cache-Control": "public, max-age=300",
     }),
   );
+
+  if (options.accountDeletion) {
+    app.delete("/account", async (context) => {
+      requireProtocolVersion(options, context);
+      const principal = options.principal(context);
+      if (
+        options.authorize &&
+        !(await options.authorize(principal, "sync:write"))
+      )
+        throw new AuthorizationError();
+      await options.accountDeletion!(context.env).delete(principal.sub);
+      return context.body(null, 204, { "Cache-Control": "no-store" });
+    });
+  }
 
   app.put("/mutation-batches/:batchId", async (context) => {
     requireProtocolVersion(options, context);
@@ -413,6 +434,7 @@ async function authorizedPrincipal<TBindings extends object>(
   ) {
     throw new AuthorizationError();
   }
+  await options.accountDeletion?.(context.env).requireActive(principal.sub);
   return principal;
 }
 

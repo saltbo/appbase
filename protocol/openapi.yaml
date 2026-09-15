@@ -15,6 +15,26 @@ servers:
 security:
   - oauth2: [appbase:read, appbase:write]
 paths:
+  /appbase/account:
+    delete:
+      summary: Permanently delete the application account
+      description: Optional host capability. Erases application data and requests provider customer deletion without deleting the identity provider account. Repeating the request resumes incomplete cleanup. Store subscriptions are managed separately.
+      operationId: deleteAccount
+      security:
+        - oauth2: [appbase:write]
+      parameters:
+        - $ref: "#/components/parameters/ApiVersion"
+      responses:
+        "204":
+          description: Application data erased and provider deletion accepted.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /billing/configuration:
     $ref: "./billing.openapi.json#/paths/~1billing~1configuration"
   /billing/account:

@@ -32,6 +32,15 @@ void main() {
 
   tearDown(() => database.close());
 
+  test('deletion purges the local projection and account metadata', () async {
+    await database.customStatement("INSERT INTO notes VALUES ('n1','secret')");
+    await persistence.deleteAccount(session.value!);
+    expect(await _count(database, 'notes'), 0);
+    expect(await _count(database, 'appbase_accounts'), 0);
+    expect(await _count(database, 'appbase_records'), 0);
+    expect(await _count(database, 'appbase_outbox'), 0);
+  });
+
   test('commits a product write and outbox mutation atomically', () async {
     await persistence.commit(
       const [

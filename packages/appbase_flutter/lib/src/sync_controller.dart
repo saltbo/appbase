@@ -90,6 +90,11 @@ final class AppBaseSyncController extends ChangeNotifier {
     _timer = Timer(delay, () => unawaited(syncNow()));
   }
 
+  Future<void> deleteAccount() async {
+    _timer?.cancel();
+    await engine.deleteAccount();
+  }
+
   Future<void> signOut() async {
     _timer?.cancel();
     await engine.signOut();

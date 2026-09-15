@@ -33,3 +33,9 @@ export {
 } from "./usecases/ports.js";
 export type { SyncDeps } from "./usecases/sync.js";
 export { pullChanges, pushMutations } from "./usecases/sync.js";
+
+export {
+  AccountDeletionService,
+  AccountDeletedError,
+  type AccountDeletionRepository,
+} from "./usecases/account_deletion.js";

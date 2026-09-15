@@ -1,3 +1,7 @@
+## 0.2.0
+
+- Support application-scoped account deletion and local identity cleanup.
+
 # Changelog
 
 ## Unreleased

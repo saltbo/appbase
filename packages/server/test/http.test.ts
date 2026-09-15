@@ -1,3 +1,4 @@
+import { AccountDeletionService } from "../src/usecases/account_deletion.js";
 import { describe, expect, it } from "vitest";
 
 import contractFixture from "../../../protocol/fixtures/http-contract.json" with { type: "json" };
@@ -24,6 +25,46 @@ const config: AppBasePublicConfig = {
 };
 
 describe("AppBase HTTP protocol", () => {
+  it("deletes only the authenticated owner and keeps repeated deletion authorized", async () => {
+    const deleted = new Set<string>();
+    const service = new AccountDeletionService(
+      {
+        isDeleted: async (owner) => deleted.has(owner),
+        begin: async (owner) => {
+          deleted.add(owner);
+        },
+        pendingBillingIdentities: async () => [],
+        completeBillingIdentity: async () => {},
+      },
+      async () => {},
+    );
+    const app = appForPrincipal({ accountDeletion: () => service });
+    const request = {
+      method: "DELETE",
+      headers: { "API-Version": "2026-08-17" },
+      body: JSON.stringify({ sub: "victim" }),
+    };
+    expect(
+      (
+        await appForPrincipal({
+          accountDeletion: () => service,
+          authorize: () => false,
+        }).request("/account", request, {})
+      ).status,
+    ).toBe(403);
+    expect(deleted.size).toBe(0);
+    for (let i = 0; i < 2; i++)
+      expect((await app.request("/account", request, {})).status).toBe(204);
+    expect([...deleted]).toEqual(["user-1"]);
+    const rejected = await app.request(
+      "/changes",
+      { headers: { "API-Version": "2026-08-17" } },
+      {},
+    );
+    expect(rejected.status).toBe(403);
+    expect(await rejected.json()).toMatchObject({ code: "ACCOUNT_DELETED" });
+  });
+
   it("publishes configuration with request correlation and observation", async () => {
     const events: unknown[] = [];
     const app = appForPrincipal({ observe: (event) => events.push(event) });
@@ -265,12 +306,16 @@ function appForPrincipal(
   overrides: {
     repository?: SyncRepository;
     authorize?: () => boolean;
+    accountDeletion?: () => AccountDeletionService;
     legacyV1?: boolean;
     publicConfig?: AppBasePublicConfig;
     observe?: (event: import("../src/http/app").AppBaseRequestEvent) => void;
   } = {},
 ) {
   return createAppBase<Record<string, never>>({
+    ...(overrides.accountDeletion
+      ? { accountDeletion: overrides.accountDeletion }
+      : {}),
     publicConfig: overrides.publicConfig ?? config,
     principal: () => ({ sub: "user-1", scopes: ["openid"] }),
     createDeps: () => ({
