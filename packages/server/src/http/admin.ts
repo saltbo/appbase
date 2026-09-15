@@ -36,7 +36,9 @@ export type AdminHttpOptions<B extends object> = {
 };
 const text = z.string().trim().min(1).max(200);
 /** Optional mount; the host supplies verified OIDC/session authentication and explicit policy. */
-export function createAdmin<B extends object>(options: AdminHttpOptions<B>) {
+export function createAdmin<B extends object>(
+  options: AdminHttpOptions<B>,
+): Hono<{ Bindings: B }> {
   const base = new URL(options.url);
   if (
     base.protocol !== "https:" ||
@@ -257,7 +259,7 @@ export function createAdminPage(options: {
   url: string;
   productName: string;
   environments: readonly { name: AdminEnvironment; url: string }[];
-}) {
+}): Hono {
   const base = new URL(options.url);
   if (
     base.protocol !== "https:" ||

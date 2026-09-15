@@ -46,7 +46,7 @@ export async function adminSessionHash(id: string) {
   ).join("");
 }
 /** Confidential OIDC BFF. OAuth tokens never leave the callback or persist in sessions. */
-export function createAdminOidc(options: AdminOidcOptions) {
+export function createAdminOidc(options: AdminOidcOptions): Hono {
   const url = new URL(options.url);
   if (
     url.protocol !== "https:" ||
