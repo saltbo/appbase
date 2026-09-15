@@ -147,7 +147,16 @@ describe("application account deletion in D1", () => {
 
   it("uses the provider deletion operation and treats already deleted as success", async () => {
     for (const status of [200, 404, 503]) {
-      const request = vi.fn(async () => new Response(null, { status }));
+      const request = vi.fn(
+        async (_url: string | URL | Request, init?: RequestInit) => {
+          if (
+            new Headers(init?.headers).get("Content-Type") !==
+            "application/json"
+          )
+            return new Response('{"code":7227}', { status: 401 });
+          return new Response(null, { status });
+        },
+      );
       const provider = new RevenueCatProvider("fixture-secret", request);
       if (status === 503)
         await expect(provider.deleteSubscriber("a/b")).rejects.toThrow("503");

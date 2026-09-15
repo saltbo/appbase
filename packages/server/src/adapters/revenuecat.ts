@@ -82,17 +82,33 @@ export class RevenueCatProvider implements BillingProvider {
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
           Accept: "application/json",
+          "Content-Type": "application/json",
         },
         signal: AbortSignal.timeout(10000),
         redirect: "manual",
       },
     );
-    await response.body?.cancel();
-    if (!response.ok && response.status !== 404)
+    if (!response.ok && response.status !== 404) {
+      const body = await boundedText(response);
+      let providerCode: number | undefined;
+      try {
+        const parsed: unknown = JSON.parse(body);
+        if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          "code" in parsed &&
+          typeof parsed.code === "number"
+        )
+          providerCode = parsed.code;
+      } catch {
+        /* Non-JSON errors retain their HTTP status. */
+      }
       throw new BillingError(
         "PROVIDER_UNAVAILABLE",
-        `RevenueCat returned HTTP ${response.status} during deletion.`,
+        `RevenueCat returned HTTP ${response.status} during deletion${providerCode === undefined ? "" : ` (code ${providerCode})`}.`,
       );
+    }
+    await response.body?.cancel();
   }
 
   async subscriber(appUserId: string): Promise<BillingState> {
