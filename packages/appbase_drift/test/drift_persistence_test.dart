@@ -39,6 +39,16 @@ void main() {
     expect(await _count(database, 'appbase_accounts'), 0);
     expect(await _count(database, 'appbase_records'), 0);
     expect(await _count(database, 'appbase_outbox'), 0);
+    await expectLater(
+      persistence.commit(
+        const [],
+        () => database.customStatement(
+          "INSERT INTO notes VALUES ('late','private')",
+        ),
+      ),
+      throwsA(isA<AppBaseLocalException>()),
+    );
+    expect(await _count(database, 'notes'), 0);
   });
 
   test('commits a product write and outbox mutation atomically', () async {
