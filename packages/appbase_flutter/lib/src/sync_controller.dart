@@ -1,8 +1,10 @@
 import 'dart:async';
+
 import 'dart:math';
 
 import 'package:appbase_client/appbase_client.dart';
 import 'package:flutter/foundation.dart';
+import 'session_events.dart';
 
 final class AppBaseSyncController extends ChangeNotifier {
   AppBaseSyncController({
@@ -14,9 +16,18 @@ final class AppBaseSyncController extends ChangeNotifier {
   }) : _retryJitter = retryJitter ?? _equalJitter {
     _state = engine.state;
     _stateSubscription = engine.states.listen((value) {
-      _state = value;
+      _state = _sessionInvalidated ? const AppBaseSyncState.idle() : value;
       if (!_disposed) notifyListeners();
     });
+    final session = engine.session;
+    if (session is AppBaseSessionEvents) {
+      _sessionSubscription = session.invalidations.listen((_) {
+        _sessionInvalidated = true;
+        _timer?.cancel();
+        _state = const AppBaseSyncState.idle();
+        if (!_disposed) notifyListeners();
+      });
+    }
     _retrySubscription = retrySignals?.listen(
       (_) => scheduleSync(Duration.zero),
     );
@@ -30,6 +41,8 @@ final class AppBaseSyncController extends ChangeNotifier {
   late final StreamSubscription<AppBaseSyncState> _stateSubscription;
   StreamSubscription<Object?>? _retrySubscription;
   Timer? _timer;
+  StreamSubscription<void>? _sessionSubscription;
+  bool _sessionInvalidated = false;
   Duration? _nextRetry;
   bool _disposed = false;
 
@@ -40,14 +53,25 @@ final class AppBaseSyncController extends ChangeNotifier {
     if (account != null) scheduleSync(Duration.zero);
   }
 
-  Future<void> signInAndSync() => engine.signIn();
+  Future<void> signInAndSync() async {
+    // Drain an earlier account's request before opening another session.
+    if (_sessionInvalidated) {
+      try {
+        await engine.syncNow();
+      } on AppBaseException {
+        // A failed old request must not prevent explicit reauthentication.
+      }
+    }
+    _sessionInvalidated = false;
+    await engine.signIn();
+  }
 
   Future<void> syncNow() async {
     try {
       await engine.syncNow();
       _nextRetry = null;
     } on AppBaseException catch (error) {
-      if (!error.isRetryable) return;
+      if (_sessionInvalidated || !error.isRetryable) return;
       final retryBase = _nextRetry ?? baseRetryDelay;
       final delay = error.retryAfter ?? _retryJitter(retryBase);
       _nextRetry = Duration(
@@ -76,6 +100,7 @@ final class AppBaseSyncController extends ChangeNotifier {
     _disposed = true;
     _timer?.cancel();
     unawaited(_stateSubscription.cancel());
+    unawaited(_sessionSubscription?.cancel());
     unawaited(_retrySubscription?.cancel());
     unawaited(engine.close());
     super.dispose();

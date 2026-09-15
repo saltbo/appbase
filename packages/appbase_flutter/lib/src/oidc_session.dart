@@ -9,6 +9,8 @@ import 'package:oidc/oidc.dart';
 import 'package:oidc_default_store/oidc_default_store.dart';
 
 import 'installation_id.dart';
+import 'oidc_manager.dart';
+import 'session_events.dart';
 
 typedef AppBaseRedirectUri = Uri Function();
 typedef AppBaseOidcManagerFactory =
@@ -89,7 +91,7 @@ final class AppBaseOidcPolicy {
     final tokenParameters = configuration.usesResourceIndicator
         ? {'resource': tokenResource.toString()}
         : const <String, String>{};
-    return OidcUserManager.lazy(
+    return AppBaseOidcManager(
       id: '$namespace.oidc.$provider',
       discoveryDocumentUri: OidcUtils.getOpenIdConfigWellKnownUri(
         configuration.issuer,
@@ -199,6 +201,7 @@ final class AppBaseOidcGrant {
   }
 
   Future<OidcUserManager> _initializedManager() async {
+    if (_manager?.isDisposed == true) _manager = null;
     final manager = _manager ??= _managerFactory(
       configuration,
       resources,
@@ -209,7 +212,13 @@ final class AppBaseOidcGrant {
         'A multi-resource OIDC manager must disable automatic token refresh.',
       );
     }
-    await manager.init();
+    try {
+      await manager.init();
+    } catch (_) {
+      if (identical(_manager, manager)) _manager = null;
+      await manager.dispose();
+      rethrow;
+    }
     final current = manager.currentUser;
     if (current != null) _rememberTokenAudience(current.token);
     return manager;
@@ -294,7 +303,7 @@ final class _AppBaseOidcResourceSession implements AppBaseSession {
   Future<void> signOut() => grant.signOut();
 }
 
-final class AppBaseOidcSession implements AppBaseSession {
+final class AppBaseOidcSession implements AppBaseSession, AppBaseSessionEvents {
   AppBaseOidcSession({
     required this.loadConfiguration,
     required this.installationId,
@@ -306,6 +315,27 @@ final class AppBaseOidcSession implements AppBaseSession {
   final AppBaseInstallationId installationId;
   final AppBaseOidcManagerFactory _managerFactory;
   Future<_Runtime>? _runtimeFuture;
+  _Runtime? _readyRuntime;
+  bool _disposed = false;
+  final _invalidations = StreamController<void>.broadcast(sync: true);
+  StreamSubscription<OidcUser?>? _userSubscription;
+  bool _hadUser = false;
+
+  @override
+  Stream<void> get invalidations => _invalidations.stream;
+
+  Future<void> dispose() async {
+    _disposed = true;
+    await _userSubscription?.cancel();
+    try {
+      final runtime = await _runtimeFuture;
+      await runtime?.manager.dispose();
+    } on Object {
+      // Failed initialization already disposes its manager.
+    } finally {
+      await _invalidations.close();
+    }
+  }
 
   @override
   Future<AppBaseAccount?> account() async {
@@ -321,8 +351,7 @@ final class AppBaseOidcSession implements AppBaseSession {
     await runtime.manager.init();
     final current = runtime.manager.currentUser;
     if (current == null) return null;
-    return current.token.accessToken ??
-        (await runtime.manager.refreshToken())?.token.accessToken;
+    return runtime.manager.getAccessToken();
   }
 
   @override
@@ -348,9 +377,39 @@ final class AppBaseOidcSession implements AppBaseSession {
   }
 
   Future<_Runtime> _runtime() {
-    return _runtimeFuture ??= loadConfiguration().then(
-      (config) => _Runtime(config, _managerFactory(config)),
-    );
+    if (_disposed) return Future.error(StateError('Session is disposed'));
+    if (_readyRuntime?.manager.isDisposed == true) {
+      _readyRuntime = null;
+      _runtimeFuture = null;
+    }
+    return _runtimeFuture ??= _initializeRuntime().onError((
+      Object error,
+      StackTrace stack,
+    ) {
+      // A denied first request must not poison every retry for this process.
+      _runtimeFuture = null;
+      Error.throwWithStackTrace(error, stack);
+    });
+  }
+
+  Future<_Runtime> _initializeRuntime() async {
+    await _userSubscription?.cancel();
+    final config = await loadConfiguration();
+    if (_disposed) throw StateError('Session is disposed');
+    final manager = _managerFactory(config);
+    try {
+      await manager.init();
+      if (_disposed) throw StateError('Session is disposed');
+    } catch (_) {
+      await manager.dispose();
+      rethrow;
+    }
+    _hadUser = manager.currentUser != null;
+    _userSubscription = manager.userChanges().listen((user) {
+      if (user == null && _hadUser) _invalidations.add(null);
+      _hadUser = user != null;
+    });
+    return _readyRuntime = _Runtime(config, manager);
   }
 
   Future<AppBaseAccount> _account(Uri issuer, OidcUser user) async {

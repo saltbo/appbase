@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1 - 2026-09-15
+
+- Bound AppBase requests and OIDC initialization/token exchanges; allow retry after denied or stalled networking. Preserve interactive browser time and session-refresh invalidation semantics. No wire or database changes.
+
 ## 0.8.0 - 2026-09-08
 
 - Add schema-only billing configuration with admin setup, explicit unconfigured state, and default-only catalogs.
