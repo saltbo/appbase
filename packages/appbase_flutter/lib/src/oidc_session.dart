@@ -28,6 +28,7 @@ final class AppBaseOidcPolicy {
     required this.postLogoutRedirectUri,
     this.prompt = const [],
     this.providerLogoutInBackground = false,
+    this.platformOptions = const OidcPlatformSpecificOptions(),
     this.scopes = const [
       'openid',
       'profile',
@@ -46,6 +47,7 @@ final class AppBaseOidcPolicy {
 
   /// Opt in only when the provider supports authenticated HTTP end-session.
   final bool providerLogoutInBackground;
+  final OidcPlatformSpecificOptions platformOptions;
 
   OidcUserManager createManager(AppBaseClientConfiguration configuration) {
     return _createManager(
@@ -111,6 +113,7 @@ final class AppBaseOidcPolicy {
         postLogoutRedirectUri: postLogoutRedirectUri(),
         scope: scopes,
         prompt: prompt,
+        options: platformOptions,
         extraAuthenticationParameters: authorizationResources,
         extraTokenParameters: tokenParameters,
         // A multi-resource grant rotates one refresh token across audiences.

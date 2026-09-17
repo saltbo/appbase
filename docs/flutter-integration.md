@@ -42,5 +42,7 @@ the ID-token hint and client ID over its existing HTTP client, without a browser
 or post-logout redirect. Only a successful HTTP response completes logout;
 redirects and HTTP failures remain errors. Browser cookies are not modified.
 The host must verify the provider's session invalidation behavior before opting in.
+Use `platformOptions` to configure native authentication sessions, including
+isolated Apple sessions when shared browser cookies must not be reused.
 Set `AppBaseOidcPolicy(prompt: const ['login'], ...)` when explicit sign-in must
 display the provider login page even if the browser has an SSO session.

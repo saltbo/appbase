@@ -1,3 +1,7 @@
+## 0.3.3
+
+- Allow applications to configure native authentication session options.
+
 ## 0.3.2
 
 - Add opt-in background HTTP provider logout without opening a browser.
