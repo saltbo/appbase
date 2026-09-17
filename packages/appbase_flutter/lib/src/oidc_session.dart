@@ -27,6 +27,7 @@ final class AppBaseOidcPolicy {
     required this.redirectUri,
     required this.postLogoutRedirectUri,
     this.prompt = const [],
+    this.providerLogoutInBackground = false,
     this.scopes = const [
       'openid',
       'profile',
@@ -42,6 +43,9 @@ final class AppBaseOidcPolicy {
   final AppBaseRedirectUri postLogoutRedirectUri;
   final List<String> scopes;
   final List<String> prompt;
+
+  /// Opt in only when the provider supports authenticated HTTP end-session.
+  final bool providerLogoutInBackground;
 
   OidcUserManager createManager(AppBaseClientConfiguration configuration) {
     return _createManager(
@@ -93,6 +97,7 @@ final class AppBaseOidcPolicy {
         ? {'resource': tokenResource.toString()}
         : const <String, String>{};
     return AppBaseOidcManager(
+      providerLogoutInBackground: providerLogoutInBackground,
       id: '$namespace.oidc.$provider',
       discoveryDocumentUri: OidcUtils.getOpenIdConfigWellKnownUri(
         configuration.issuer,

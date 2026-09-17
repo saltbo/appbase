@@ -86,6 +86,47 @@ void main() {
     },
   );
 
+  test('background logout calls HTTP without invoking the browser', () async {
+    await fixture.close();
+    fixture = await _Fixture.create(providerLogoutInBackground: true);
+    await fixture.seed(const Duration(hours: 1));
+    final idToken = fixture.manager.currentUser!.idToken;
+    await fixture.session.endProviderSession();
+    expect(platform.calls, 0);
+    expect(fixture.logoutRequests, hasLength(1));
+    expect(fixture.logoutRequests.single, {
+      'id_token_hint': idToken,
+      'client_id': 'test-client',
+    });
+    expect(await fixture.session.account(), isNull);
+    expect(await fixture.session.accessToken(), isNull);
+  });
+
+  for (final status in [302, 401, 503]) {
+    test(
+      'background logout rejects HTTP $status without clearing user',
+      () async {
+        await fixture.close();
+        fixture = await _Fixture.create(providerLogoutInBackground: true);
+        fixture.logoutStatus = status;
+        await fixture.seed(const Duration(hours: 1));
+        await expectLater(
+          fixture.session.endProviderSession(),
+          throwsA(
+            isA<AppBaseApiException>().having(
+              (error) => error.statusCode,
+              'status',
+              status,
+            ),
+          ),
+        );
+        expect(platform.calls, 0);
+        expect(fixture.redirectRequests, 0);
+        expect(await fixture.session.account(), isNotNull);
+      },
+    );
+  }
+
   test('valid token is reused without a refresh request', () async {
     await fixture.seed(const Duration(hours: 1));
     expect(await fixture.session.accessToken(), 'old-token');
@@ -209,6 +250,9 @@ final class _Fixture {
   late final AppBaseOidcSession session;
   String? error;
   int exchanges = 0;
+  int logoutStatus = 200;
+  int redirectRequests = 0;
+  final logoutRequests = <Map<String, String>>[];
   final requests = <Map<String, String>>[];
   Completer<void>? responseGate;
   final requestStarted = Completer<void>();
@@ -219,13 +263,18 @@ final class _Fixture {
   static Future<_Fixture> create({
     bool enableTimers = false,
     bool supportsLogout = true,
+    bool providerLogoutInBackground = false,
   }) async {
     final fixture = _Fixture(
       await HttpServer.bind(InternetAddress.loopbackIPv4, 0),
       supportsLogout: supportsLogout,
     );
     fixture.server.listen(fixture.handle);
-    fixture.manager = _Manager(fixture.origin, enableTimers: enableTimers);
+    fixture.manager = _Manager(
+      fixture.origin,
+      enableTimers: enableTimers,
+      providerLogoutInBackground: providerLogoutInBackground,
+    );
     await fixture.manager.init();
     fixture.manager.userChanges().listen((user) {
       if (user?.token.accessToken == 'fresh-token' &&
@@ -298,6 +347,14 @@ final class _Fixture {
           'grant_types_supported': ['authorization_code', 'refresh_token'],
         }),
       );
+    } else if (request.uri.path == '/logout') {
+      logoutRequests.add(request.uri.queryParameters);
+      request.response.statusCode = logoutStatus;
+      if (logoutStatus == 302) {
+        request.response.headers.set('location', '$origin/redirect-target');
+      }
+    } else if (request.uri.path == '/redirect-target') {
+      redirectRequests++;
     } else if (request.uri.path == '/token') {
       exchanges++;
       requests.add(
@@ -333,20 +390,23 @@ final class _Fixture {
 }
 
 final class _Manager extends AppBaseOidcManager {
-  _Manager(Uri origin, {this.enableTimers = false})
-    : super(
-        discoveryDocumentUri: origin.resolve('/discovery'),
-        clientCredentials: OidcClientAuthentication.none(
-          clientId: 'test-client',
-        ),
-        store: OidcMemoryStore(),
-        settings: OidcUserManagerSettings(
-          redirectUri: Uri.parse('test:/callback'),
-          postLogoutRedirectUri: Uri.parse('test:/logout'),
-          prompt: const ['login'],
-          extraTokenParameters: {'resource': origin.toString()},
-        ),
-      );
+  _Manager(
+    Uri origin, {
+    this.enableTimers = false,
+    super.providerLogoutInBackground,
+  }) : super(
+         discoveryDocumentUri: origin.resolve('/discovery'),
+         clientCredentials: OidcClientAuthentication.none(
+           clientId: 'test-client',
+         ),
+         store: OidcMemoryStore(),
+         settings: OidcUserManagerSettings(
+           redirectUri: Uri.parse('test:/callback'),
+           postLogoutRedirectUri: Uri.parse('test:/logout'),
+           prompt: const ['login'],
+           extraTokenParameters: {'resource': origin.toString()},
+         ),
+       );
 
   final bool enableTimers;
 

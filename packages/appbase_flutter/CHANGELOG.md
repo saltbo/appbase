@@ -1,3 +1,7 @@
+## 0.3.2
+
+- Add opt-in background HTTP provider logout without opening a browser.
+
 ## 0.3.1
 
 - Add explicit provider logout with callback validation and configurable authorization prompts. Keep local session cleanup separate.

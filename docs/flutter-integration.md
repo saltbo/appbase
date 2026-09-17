@@ -36,5 +36,11 @@ Browser cancellation, missing logout support and invalid callbacks are errors;
 the host should show them and allow another attempt. Providers may already have
 revoked tokens or cleared their browser session before a callback fails.
 `signOut()` remains local cleanup for account deletion and invalidation.
+For providers that explicitly support authenticated HTTP end-session requests,
+set `AppBaseOidcPolicy(providerLogoutInBackground: true, ...)`. The adapter sends
+the ID-token hint and client ID over its existing HTTP client, without a browser
+or post-logout redirect. Only a successful HTTP response completes logout;
+redirects and HTTP failures remain errors. Browser cookies are not modified.
+The host must verify the provider's session invalidation behavior before opting in.
 Set `AppBaseOidcPolicy(prompt: const ['login'], ...)` when explicit sign-in must
 display the provider login page even if the browser has an SSO session.

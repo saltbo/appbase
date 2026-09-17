@@ -14,9 +14,11 @@ class AppBaseOidcManager extends OidcUserManager {
     required super.settings,
     super.id,
     this.networkTimeout = const Duration(seconds: 20),
+    this.providerLogoutInBackground = false,
   }) : super.lazy(httpClient: http.Client());
 
   final Duration networkTimeout;
+  final bool providerLogoutInBackground;
   Future<void>? _initializing;
   Future<void>? _disposing;
   final _deadlineKey = Object();
@@ -44,6 +46,9 @@ class AppBaseOidcManager extends OidcUserManager {
     OidcPlatformSpecificOptions options,
     Map<String, dynamic> preparationResult,
   ) async {
+    if (providerLogoutInBackground) {
+      return _endSessionOverHttp(metadata, request);
+    }
     final response = await super.getEndSessionResponse(
       metadata,
       request,
@@ -68,6 +73,52 @@ class AppBaseOidcManager extends OidcUserManager {
     }
     return response;
   }
+
+  Future<OidcEndSessionResponse> _endSessionOverHttp(
+    OidcProviderMetadata metadata,
+    OidcEndSessionRequest request,
+  ) => _bounded(() async {
+    final endpoint = metadata.endSessionEndpoint;
+    final idToken = request.idTokenHint;
+    if (endpoint == null || idToken == null || idToken.isEmpty) {
+      throw const AppBaseApiException(
+        kind: AppBaseFailureKind.authentication,
+        code: 'provider_logout_unavailable',
+        message:
+            'Provider logout requires an end-session endpoint and ID token.',
+      );
+    }
+    // This is an authenticated machine request, not a browser redirect flow.
+    // Never follow redirects or forward the ID token to another destination.
+    final uri = OidcEndSessionRequest(
+      idTokenHint: idToken,
+      clientId: request.clientId,
+    ).generateUri(endpoint);
+    try {
+      final response = await httpClient!.send(
+        http.Request('GET', uri)..followRedirects = false,
+      );
+      await response.stream.drain<void>();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw AppBaseApiException(
+          kind: AppBaseFailureKind.authentication,
+          code: 'provider_logout_failed',
+          message: 'Provider logout failed (HTTP ${response.statusCode}).',
+          statusCode: response.statusCode,
+        );
+      }
+    } on http.ClientException catch (_, stack) {
+      // ClientException includes its URL, which contains the ID-token hint.
+      Error.throwWithStackTrace(
+        const AppBaseTransportException(
+          message: 'Provider logout network request failed.',
+        ),
+        stack,
+      );
+    }
+    // Complete the library's pending state only after the HTTP response succeeds.
+    return OidcEndSessionResponse.fromJson({'state': request.state});
+  });
 
   Future<OidcUser?>? _refresh;
 
