@@ -86,6 +86,12 @@ export class BillingService {
         "PRECONDITION_FAILED",
         "The catalog changed; reload before editing.",
       );
+    // Older administrators may edit plans without knowing the additive policy field.
+    if (
+      catalog.purchases === undefined &&
+      current?.catalog.purchases !== undefined
+    )
+      catalog = { ...catalog, purchases: current.catalog.purchases };
     validateCatalog(
       catalog,
       current?.catalog ?? null,

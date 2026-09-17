@@ -2,7 +2,7 @@ import { accountOwner } from "../usecases/accounts.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { bodyLimit } from "hono/body-limit";
-import { BillingError } from "../domain/billing.js";
+import { BillingError, defaultPlatformPurchases } from "../domain/billing.js";
 import type { BillingService } from "../usecases/billing.js";
 import {
   AuthenticationError,
@@ -39,12 +39,26 @@ const plan = z
     ),
   })
   .strict();
+const purchaseAvailability = z
+  .object({
+    enabled: z.boolean(),
+    message: z.string().trim().max(500),
+  })
+  .strict()
+  .refine(
+    (value) => value.enabled || value.message.length > 0,
+    "A paused platform requires a customer-facing message.",
+  );
 export const catalogSchema = z
   .object({
     freePlan: plan,
     plans: z.array(plan).max(30),
     entitlementPlans: z.record(id, id),
     honorGracePeriod: z.boolean(),
+    purchases: z
+      .object({ ios: purchaseAvailability, android: purchaseAvailability })
+      .strict()
+      .optional(),
   })
   .strict();
 export type BillingCapability =
@@ -158,10 +172,11 @@ export function createBilling<B extends object>(
   app.get("/account", async (c) => {
     const p = await principal(c.req.raw, c.env, "billing:read");
     const service = options.service(c.env);
-    await service.catalog();
+    const { catalog } = await service.catalog();
     return c.json({
       appUserId: await service.repository.identity(accountOwner(p)),
       sdkKeys: options.sdkKeys(c.env),
+      purchases: catalog.purchases ?? defaultPlatformPurchases,
       state: await service.repository.state(accountOwner(p)),
     });
   });

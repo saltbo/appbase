@@ -17,15 +17,39 @@ enum BillingPhase {
   failed,
 }
 
+final class PurchaseAvailability {
+  const PurchaseAvailability({required this.enabled, this.message = ''});
+  final bool enabled;
+  final String message;
+  factory PurchaseAvailability.fromJson(Object? value) {
+    if (value is! Map<String, dynamic> ||
+        value['enabled'] is! bool ||
+        value['message'] is! String ||
+        (value['message'] as String).length > 500 ||
+        (value['enabled'] == false &&
+            (value['message'] as String).trim().isEmpty)) {
+      throw const FormatException('Invalid purchase availability.');
+    }
+    return PurchaseAvailability(
+      enabled: value['enabled'] as bool,
+      message: value['message'] as String,
+    );
+  }
+}
+
 final class BillingAccount {
   const BillingAccount({
     required this.appUserId,
     required this.iosKey,
     required this.androidKey,
+    this.iosPurchases = const PurchaseAvailability(enabled: true),
+    this.androidPurchases = const PurchaseAvailability(enabled: true),
   });
   final String appUserId;
   final String iosKey;
   final String androidKey;
+  final PurchaseAvailability? iosPurchases;
+  final PurchaseAvailability? androidPurchases;
 }
 
 abstract interface class BillingApi {
@@ -88,6 +112,18 @@ final class HttpBillingApi implements BillingApi {
       appUserId: data['appUserId'] as String,
       iosKey: keys['ios'] as String,
       androidKey: keys['android'] as String,
+      // Older servers do not supply policy. Keep restore/manage usable but
+      // never interpret a missing policy as authorization for a new purchase.
+      iosPurchases: data['purchases'] == null
+          ? null
+          : PurchaseAvailability.fromJson(
+              (data['purchases'] as Map<String, dynamic>)['ios'],
+            ),
+      androidPurchases: data['purchases'] == null
+          ? null
+          : PurchaseAvailability.fromJson(
+              (data['purchases'] as Map<String, dynamic>)['android'],
+            ),
     );
   }
 
@@ -112,7 +148,9 @@ final class BillingController extends ChangeNotifier {
     required this.api,
     required this.ui,
     required this.refreshMembership,
-  });
+    TargetPlatform? platform,
+  }) : platform = platform ?? defaultTargetPlatform;
+  final TargetPlatform platform;
   final BillingApi api;
   final BillingUi ui;
   final Future<void> Function() refreshMembership;
@@ -122,6 +160,16 @@ final class BillingController extends ChangeNotifier {
   Future<void> _tail = Future<void>.value();
   BillingPhase _phase = BillingPhase.idle;
   Object? _error;
+  PurchaseAvailability? _purchases;
+  PurchaseAvailability? get purchases => _purchases;
+  bool get purchasePolicyUnavailable =>
+      supported && !busy && _purchases == null;
+  void _readPolicy(BillingAccount account) {
+    _purchases = platform == TargetPlatform.iOS
+        ? account.iosPurchases
+        : account.androidPurchases;
+  }
+
   BillingPhase get phase => _phase;
   Object? get error => _error;
   bool get supported => ui.supported;
@@ -132,7 +180,9 @@ final class BillingController extends ChangeNotifier {
     BillingPhase.synchronizing => true,
     _ => false,
   };
-  bool get canPurchase =>
+  bool get canPurchase => canManage && _purchases?.enabled == true;
+  bool get canRestore => canManage;
+  bool get canManage =>
       supported && _account != null && !busy && _phase != BillingPhase.idle;
   void _publish(BillingPhase phase, [Object? error]) {
     if (_disposed) return;
@@ -146,6 +196,7 @@ final class BillingController extends ChangeNotifier {
   Future<void> setAccount(String? account) {
     if (_account == account) return Future.value();
     _account = account;
+    _purchases = null;
     final generation = ++_generation;
     _publish(
       account == null || !supported ? BillingPhase.idle : BillingPhase.loading,
@@ -154,6 +205,7 @@ final class BillingController extends ChangeNotifier {
     return _enqueue(generation, () async {
       final config = await api.account();
       if (!_current(generation)) return;
+      _readPolicy(config);
       await ui.identify(config);
       if (!_current(generation)) return;
       // SDK registration precedes the first server lookup for a new customer.
@@ -163,6 +215,7 @@ final class BillingController extends ChangeNotifier {
 
   Future<void> clearAccount() async {
     _account = null;
+    _purchases = null;
     ++_generation;
     _publish(BillingPhase.idle);
     await _tail;
@@ -175,6 +228,7 @@ final class BillingController extends ChangeNotifier {
   Future<void> purchase() => _action(
     BillingPhase.purchasing,
     () async => await ui.purchase() == BillingActionResult.completed,
+    purchase: true,
   );
   Future<void> restore() => _action(BillingPhase.restoring, () async {
     await ui.restore();
@@ -189,14 +243,33 @@ final class BillingController extends ChangeNotifier {
     return _action(BillingPhase.synchronizing, () async => true);
   }
 
-  Future<void> _action(BillingPhase phase, Future<bool> Function() operation) {
-    if (!canPurchase) return Future.value();
+  /// Refresh policy without contacting the store or synchronizing entitlements.
+  Future<void> refreshAvailability() {
+    if (!supported || _account == null || busy) return Future.value();
+    final generation = _generation;
+    _publish(BillingPhase.loading);
+    return _enqueue(generation, () async {
+      _purchases = null;
+      final config = await api.account();
+      if (_current(generation)) _readPolicy(config);
+    });
+  }
+
+  Future<void> _action(
+    BillingPhase phase,
+    Future<bool> Function() operation, {
+    bool purchase = false,
+  }) {
+    if (!canManage) return Future.value();
     final generation = _generation;
     _publish(phase);
     return _enqueue(generation, () async {
       // Rebind after failed initialization; no purchase can use an older SDK identity.
+      _purchases = null;
       final config = await api.account();
       if (!_current(generation)) return;
+      _readPolicy(config);
+      if (purchase && _purchases?.enabled != true) return;
       await ui.identify(config);
       if (!_current(generation)) return;
       final completed = await operation();

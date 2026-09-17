@@ -164,9 +164,12 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "purchases": {
+                      "$ref": "#/components/schemas/PlatformPurchases"
                     }
                   },
-                  "required": ["appUserId", "sdkKeys", "state"],
+                  "required": ["appUserId", "sdkKeys", "state", "purchases"],
                   "additionalProperties": false
                 }
               }
@@ -377,6 +380,9 @@
           },
           "honorGracePeriod": {
             "type": "boolean"
+          },
+          "purchases": {
+            "$ref": "#/components/schemas/PlatformPurchases"
           }
         },
         "required": [
@@ -449,6 +455,33 @@
           "graceEndsAt",
           "willRenew"
         ],
+        "additionalProperties": false
+      },
+      "PurchaseAvailability": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": ["enabled", "message"],
+        "additionalProperties": false
+      },
+      "PlatformPurchases": {
+        "type": "object",
+        "properties": {
+          "ios": {
+            "$ref": "#/components/schemas/PurchaseAvailability"
+          },
+          "android": {
+            "$ref": "#/components/schemas/PurchaseAvailability"
+          }
+        },
+        "required": ["ios", "android"],
         "additionalProperties": false
       }
     }

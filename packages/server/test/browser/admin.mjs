@@ -208,6 +208,18 @@ try {
   assert.equal((await services.sandbox.billing.catalog()).catalog.honorGracePeriod,false);
   assert.equal((await services.production.billing.catalog()).catalog.honorGracePeriod,true);
   assert.deepEqual((await services.production.billing.catalog()).catalog.plans,catalog.plans);
+  await page.getByRole("button",{name:"Edit upgrade availability",exact:true}).click();
+  await page.locator('[name="ios-enabled"]').uncheck();
+  await page.locator('[name="ios-message"]').fill('iOS upgrades paused');
+  await page.getByLabel('Type sandbox to confirm').fill('sandbox');
+  await page.getByRole('button',{name:'Save changes',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'Changes saved'}).waitFor();
+  const policy=(await services.sandbox.billing.catalog()).catalog.purchases;
+  assert.equal(policy.ios.enabled,false);
+  assert.equal(policy.android.enabled,true);
+  assert.equal((await services.production.billing.catalog()).catalog.purchases,undefined);
+  await page.getByText('iOS upgrades paused',{exact:true}).waitFor();
+  await page.screenshot({path:'/tmp/appbase-platform-upgrades.png',fullPage:true});
   // Covers: S_ADMIN_PLAN_CREATE case=happy_path
   // Covers: S_ADMIN_PLAN_CREATE case=error_path
   await page.getByRole("button", {name:"Plans & quotas",exact:true}).click();

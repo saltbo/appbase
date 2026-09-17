@@ -13,7 +13,21 @@ export type BillingSchema = {
 
 export type BillingEnvironment = "production" | "sandbox";
 
+export type PurchaseAvailability = {
+  enabled: boolean;
+  message: string;
+};
+export type PlatformPurchases = Readonly<
+  Record<"ios" | "android", PurchaseAvailability>
+>;
+export const defaultPlatformPurchases: PlatformPurchases = {
+  ios: { enabled: true, message: "" },
+  android: { enabled: true, message: "" },
+};
+
 export type BillingCatalog = {
+  /** Missing on legacy catalogs; legacy writes preserve an existing policy. */
+  purchases?: PlatformPurchases | undefined;
   freePlan: MembershipPlan;
   plans: readonly MembershipPlan[];
   entitlementPlans: Readonly<Record<string, string>>;

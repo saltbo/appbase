@@ -126,3 +126,20 @@ legacy tokens never address replacement accounts. See protocol/semantics.md.
 Local persistence now names its progress table syncState (legacy accounts alias
 retained), with account.storageKey separating the IdP subject from application IDs.
 Migration rollback requires coordinated code/database recovery; prefer roll-forward.
+
+## Platform purchase availability
+
+The optional catalog `purchases` field contains independent `ios` and `android`
+objects with `enabled` and a plain-text `message` (at most 500 characters; required
+when paused). Catalog revision and environment permissions also protect this
+policy. Legacy catalogs retain open purchases; legacy writes preserve a stored
+policy rather than resetting it. The account response always resolves both
+platforms. The administration Payment settings page edits this policy.
+
+The Flutter billing controller rechecks policy immediately before new purchases
+and exposes separate purchase, restore and management eligibility. Unknown policy
+disables new purchases while leaving restore/manage available. Consumers refresh
+availability on entry and foreground return. The service must be upgraded before
+the client: older servers omit policy, and older clients ignore it. This is an
+application purchase-entry control, not store transaction authorization; it does
+not stop automatic renewals, in-flight purchases, callbacks or valid entitlements.
