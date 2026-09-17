@@ -479,6 +479,9 @@ export const adminOpenApi = {
           honorGracePeriod: {
             type: "boolean",
           },
+          purchases: {
+            $ref: "#/components/schemas/PlatformPurchases",
+          },
         },
         required: ["freePlan", "plans", "entitlementPlans", "honorGracePeriod"],
         additionalProperties: false,
@@ -939,6 +942,33 @@ export const adminOpenApi = {
           },
         },
         required: ["items", "totalItems", "page", "pageSize", "totalPages"],
+        additionalProperties: false,
+      },
+      PurchaseAvailability: {
+        type: "object",
+        properties: {
+          enabled: {
+            type: "boolean",
+          },
+          message: {
+            type: "string",
+            maxLength: 500,
+          },
+        },
+        required: ["enabled", "message"],
+        additionalProperties: false,
+      },
+      PlatformPurchases: {
+        type: "object",
+        properties: {
+          ios: {
+            $ref: "#/components/schemas/PurchaseAvailability",
+          },
+          android: {
+            $ref: "#/components/schemas/PurchaseAvailability",
+          },
+        },
+        required: ["ios", "android"],
         additionalProperties: false,
       },
     },

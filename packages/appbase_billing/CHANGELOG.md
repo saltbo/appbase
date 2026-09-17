@@ -1,5 +1,11 @@
 ## 0.3.0
 
+## 0.3.1
+
+- Configure iOS and Android purchase availability independently per environment.
+- Preserve restore, management and provider-confirmed entitlements while paused.
+- Refresh server policy before purchases and expose retryable unknown status.
+
 Application account lifecycle integration, account-scoped persistence and explicit registration.
 
 ## 0.2.0

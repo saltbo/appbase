@@ -47,6 +47,66 @@ function http(s = setup()) {
   return { ...s, request };
 }
 describe("provider-owned membership administration", () => {
+  it("edits platform availability with validation, authority and revision checks", async () => {
+    const s = http();
+    const current = await s.request("/catalog");
+    const original = (await current.json()) as Record<string, unknown>;
+    const purchases = {
+      ios: { enabled: false, message: "iOS paused" },
+      android: { enabled: true, message: "" },
+    };
+    const headers = {
+      "If-Match": current.headers.get("ETag")!,
+      "Admin-Environment": "production",
+    };
+    expect(
+      (
+        await s.request(
+          "/catalog",
+          "PUT",
+          {
+            ...original,
+            purchases: { ...purchases, ios: { enabled: false, message: "" } },
+          },
+          headers,
+        )
+      ).status,
+    ).toBe(422);
+    expect(
+      (
+        await s.request(
+          "/catalog",
+          "PUT",
+          { ...original, purchases },
+          { ...headers, Authorization: "admin:read" },
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await s.request(
+          "/catalog",
+          "PUT",
+          { ...original, purchases },
+          { ...headers, "Admin-Environment": "sandbox" },
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      (await s.request("/catalog", "PUT", { ...original, purchases }, headers))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        (await (await s.request("/catalog")).json()) as {
+          purchases: unknown;
+        }
+      ).purchases,
+    ).toEqual(purchases);
+    expect((await s.request("/catalog", "PUT", original, headers)).status).toBe(
+      412,
+    );
+  });
   // Covers: S_ADMIN_ACCESS case=error_path
   it("requires administrative access for reads and catalog writes", async () => {
     const s = http();

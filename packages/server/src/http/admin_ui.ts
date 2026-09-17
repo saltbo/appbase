@@ -121,6 +121,8 @@ async function showPayments() {
   const provider = context.paymentProvider;
   content.innerHTML = '<div class="page-heading"><div><h1>Payment settings</h1><p class="muted">Provider configuration for ' + esc(scope.environment) + '.</p></div></div>' + (provider ? '<div class="card"><h2>' + esc(provider.providerName) + '</h2><p class="id muted">' + esc(provider.providerId) + '</p><p>Configuration is supplied by the application deployment.</p><div class="table"><table><thead><tr><th>Setting</th><th>Configuration</th></tr></thead><tbody>' + provider.settings.map(setting => '<tr><td>' + esc(setting.name) + '</td><td>' + (setting.configured ? 'Configured' : 'Not configured') + '</td></tr>').join('') + '</tbody></table></div><p class="muted">These checks confirm configuration presence, not provider connectivity. Secret values are never displayed.</p><h3>Webhook endpoint</h3><p class="id">' + esc(provider.webhookPath ? new URL(provider.webhookPath,location.origin).href : 'Not configured') + '</p><p class="muted">Verified notifications determine the payment environment. The page selector does not reassign transactions.</p><div class="actions">' + dashboardLink() + '</div></div>' : '<div class="empty"><h2>No provider inspection configured</h2><p>The host application has not supplied payment configuration metadata.</p></div>');
   content.innerHTML += '<div class="card"><h2>Grace period policy</h2><p>' + (catalog.honorGracePeriod ? 'Enabled' : 'Disabled') + '</p><p class="muted">When enabled, access continues until the provider’s grace-period end during renewal payment issues.</p>' + (context.canConfigure ? '<button class="secondary" id="edit-grace">Edit grace period policy</button>' : '') + '</div>';
+  content.innerHTML += '<div class="card"><h2>Membership upgrades</h2><p>New purchases only. Existing access, restore and subscription management remain available.</p>' + ['ios','android'].map(platform => { const policy = catalog.purchases?.[platform] || {enabled:true,message:''}; return '<h3>' + (platform === 'ios' ? 'iOS' : 'Android') + '</h3><p>' + (policy.enabled ? 'Open' : 'Paused') + '</p><p>' + esc(policy.message) + '</p>'; }).join('') + (context.canConfigure ? '<button class="secondary" id="edit-purchases">Edit upgrade availability</button>' : '') + '</div>';
+  document.getElementById("edit-purchases")?.addEventListener("click",configurePurchases);
   document.getElementById("edit-grace")?.addEventListener("click",()=>configure(null));
   message("");
   return scope;
@@ -206,6 +208,30 @@ async function createPlan() {
       bindEntitlement(updated,id,f);
       await api(scope,"/catalog",{method:"PUT",headers:{"If-Match":etag,"Admin-Environment":f.get("environment")},body:JSON.stringify(updated)});
       await configure(id);
+    });
+    message("");
+  } catch(error) { report(error,scope); }
+}
+async function configurePurchases() {
+  const scope = view(); nav("payments");
+  try {
+    const {catalog, etag} = await loadCatalog(scope);
+    content.innerHTML = '<button class="secondary back" id="cancel">Back to payment settings</button><h1>Membership upgrades · ' + esc(scope.environment) + '</h1><form id="purchase-form">' + ['ios','android'].map(platform => {
+      const policy = catalog.purchases?.[platform] || {enabled:true,message:''};
+      return '<div class="card"><h2>' + (platform === 'ios' ? 'iOS' : 'Android') + '</h2><label><input type="checkbox" name="' + platform + '-enabled"' + (policy.enabled ? ' checked' : '') + '> Allow new purchases</label><label for="' + platform + '-message">Message when paused</label><textarea id="' + platform + '-message" name="' + platform + '-message" maxlength="500">' + esc(policy.message) + '</textarea></div>';
+    }).join('') + '<p>Does not stop store renewals or purchases already in progress.</p><label for="confirm">Type ' + esc(scope.environment) + ' to confirm</label><input id="confirm" name="environment" required><button type="submit">Save changes</button></form>';
+    document.getElementById("cancel").onclick = showPayments;
+    bindForm("purchase-form",scope,async f => {
+      const updated = structuredClone(catalog);
+      updated.purchases = Object.fromEntries(['ios','android'].map(platform => {
+        const enabled = f.has(platform + '-enabled');
+        const message = String(f.get(platform + '-message')).trim();
+        if (!enabled && !message) throw new Error('Enter a message for each paused platform.');
+        return [platform,{enabled,message}];
+      }));
+      await api(scope,"/catalog",{method:"PUT",headers:{"If-Match":etag,"Admin-Environment":f.get("environment")},body:JSON.stringify(updated)});
+      const shown = await showPayments();
+      if (shown === active) message("Changes saved.");
     });
     message("");
   } catch(error) { report(error,scope); }

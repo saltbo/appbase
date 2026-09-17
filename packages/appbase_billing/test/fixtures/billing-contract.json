@@ -5,7 +5,17 @@
       "ios": "public-ios",
       "android": "public-android"
     },
-    "state": null
+    "state": null,
+    "purchases": {
+      "ios": {
+        "enabled": true,
+        "message": ""
+      },
+      "android": {
+        "enabled": true,
+        "message": ""
+      }
+    }
   },
   "membership": {
     "planId": "studio",

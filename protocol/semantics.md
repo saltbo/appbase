@@ -150,3 +150,20 @@ Legacy clients may access only migrated active accounts with their original ID. 
 cannot register new accounts or address replacements with a bare IdP token. Hosts choosing
 the older AccountDeletionService-only route retain its pre-0008 204 contract; hosts with
 migration 0008 must configure AccountService and the account-aware verifier together.
+
+## Platform purchase availability
+
+The optional catalog `purchases` field contains independent `ios` and `android`
+objects with `enabled` and a plain-text `message` (at most 500 characters; required
+when paused). Catalog revision and environment permissions also protect this
+policy. Legacy catalogs retain open purchases; legacy writes preserve a stored
+policy rather than resetting it. The account response always resolves both
+platforms. The administration Payment settings page edits this policy.
+
+The Flutter billing controller rechecks policy immediately before new purchases
+and exposes separate purchase, restore and management eligibility. Unknown policy
+disables new purchases while leaving restore/manage available. Consumers refresh
+availability on entry and foreground return. The service must be upgraded before
+the client: older servers omit policy, and older clients ignore it. This is an
+application purchase-entry control, not store transaction authorization; it does
+not stop automatic renewals, in-flight purchases, callbacks or valid entitlements.

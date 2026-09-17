@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.0
+
+- Configure iOS and Android purchase availability independently per environment.
+- Preserve restore, management and provider-confirmed entitlements while paused.
+- Refresh server policy before purchases and expose retryable unknown status.
+
 ## 0.8.1 - 2026-09-15
 
 - Bound AppBase requests and OIDC initialization/token exchanges; allow retry after denied or stalled networking. Preserve interactive browser time and session-refresh invalidation semantics. No wire or database changes.

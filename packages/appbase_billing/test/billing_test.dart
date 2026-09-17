@@ -2,11 +2,80 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:appbase_billing/appbase_billing.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  test(
+    'iOS pause preserves restore/manage and Android, and reopening is dynamic',
+    () async {
+      final api = FakeApi()
+        ..ios = const PurchaseAvailability(
+          enabled: false,
+          message: 'iOS paused',
+        );
+      final ui = FakeUi();
+      final controller = BillingController(
+        api: api,
+        ui: ui,
+        platform: TargetPlatform.iOS,
+        refreshMembership: () async {},
+      );
+      await controller.setAccount('a');
+      expect(controller.canPurchase, false);
+      expect(controller.purchases?.message, 'iOS paused');
+      await controller.purchase();
+      expect(ui.purchases, 0);
+      await controller.restore();
+      await controller.manage();
+      expect(ui.restores, 1);
+      expect(ui.manages, 1);
+      api.ios = const PurchaseAvailability(enabled: true);
+      await controller.refreshAvailability();
+      expect(controller.canPurchase, true);
+      // Server closes after the page was rendered; purchase must re-read policy.
+      api.ios = const PurchaseAvailability(
+        enabled: false,
+        message: 'iOS paused',
+      );
+      await controller.purchase();
+      expect(ui.purchases, 0);
+      final android = BillingController(
+        api: api,
+        ui: ui,
+        platform: TargetPlatform.android,
+        refreshMembership: () async {},
+      );
+      await android.setAccount('a');
+      await android.purchase();
+      expect(ui.purchases, 1);
+      api.fail = true;
+      await controller.refreshAvailability();
+      expect(controller.purchasePolicyUnavailable, true);
+      await controller.purchase();
+      expect(ui.purchases, 1);
+      expect(controller.error, isNotNull);
+      api.fail = false;
+      api.ios = null;
+      await controller.refreshAvailability();
+      expect(controller.canPurchase, false);
+      expect(controller.canRestore, true);
+      controller.dispose();
+      android.dispose();
+    },
+  );
+  test('rejects invalid availability instead of treating it as enabled', () {
+    for (final value in [
+      null,
+      <String, Object?>{},
+      {'enabled': false, 'message': ''},
+      {'enabled': 'true', 'message': ''},
+    ]) {
+      expect(() => PurchaseAvailability.fromJson(value), throwsFormatException);
+    }
+  });
   test(
     'account deletion drains billing work and removes the SDK identity',
     () async {
@@ -270,6 +339,7 @@ void main() {
 
 class FakeApi implements BillingApi {
   String id = 'a';
+  PurchaseAvailability? ios = const PurchaseAvailability(enabled: true);
   int syncs = 0;
   bool fail = false;
   Completer<BillingAccount>? pendingAccount;
@@ -277,7 +347,12 @@ class FakeApi implements BillingApi {
   Future<BillingAccount> account() async {
     if (fail) throw StateError('offline');
     return pendingAccount?.future ??
-        BillingAccount(appUserId: id, iosKey: 'ios', androidKey: 'android');
+        BillingAccount(
+          appUserId: id,
+          iosKey: 'ios',
+          androidKey: 'android',
+          iosPurchases: ios,
+        );
   }
 
   @override

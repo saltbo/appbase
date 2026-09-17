@@ -62,6 +62,35 @@ function setup(provider: BillingProvider = { subscriber: async () => state }) {
 }
 
 describe("billing catalog and grants", () => {
+  it("persists platform policy per environment and preserves it through legacy edits", async () => {
+    const { db, service } = setup();
+    const purchases = {
+      ios: { enabled: false, message: "iOS upgrades paused" },
+      android: { enabled: true, message: "" },
+    };
+    await service.replaceCatalog({ ...catalog, purchases }, 0);
+    expect((await service.catalog()).catalog.purchases).toEqual(purchases);
+    await service.replaceCatalog(catalog, 1);
+    expect((await service.catalog()).catalog.purchases).toEqual(purchases);
+    const sandbox = new BillingService(
+      new D1BillingRepository(db, "sandbox"),
+      { subscriber: async () => state },
+      catalog,
+    );
+    expect((await sandbox.catalog()).catalog.purchases).toBeUndefined();
+    await service.synchronize("user");
+    expect(
+      billingGrant(
+        await service.repository.state("user"),
+        (await service.catalog()).catalog,
+        now,
+        false,
+      )?.planId,
+    ).toBe("plus");
+    await expect(
+      service.replaceCatalog({ ...catalog, purchases }, 1),
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  });
   it("emits the additive shared membership contract for a remotely named plan", async () => {
     const { db } = setup();
     const repository = new D1MembershipRepository(db);
