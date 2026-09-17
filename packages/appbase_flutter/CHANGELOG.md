@@ -1,3 +1,7 @@
+## 0.3.1
+
+- Add explicit provider logout with callback validation and configurable authorization prompts. Keep local session cleanup separate.
+
 ## 0.3.0
 
 Application account lifecycle integration, account-scoped persistence and explicit registration.

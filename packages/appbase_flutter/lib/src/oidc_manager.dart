@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:appbase_client/appbase_client.dart';
 import 'package:http/http.dart' as http;
 import 'package:oidc/oidc.dart';
 
@@ -35,6 +36,38 @@ class AppBaseOidcManager extends OidcUserManager {
       metadata: metadata,
     ),
   );
+
+  @override
+  Future<OidcEndSessionResponse?> getEndSessionResponse(
+    OidcProviderMetadata metadata,
+    OidcEndSessionRequest request,
+    OidcPlatformSpecificOptions options,
+    Map<String, dynamic> preparationResult,
+  ) async {
+    final response = await super.getEndSessionResponse(
+      metadata,
+      request,
+      options,
+      preparationResult,
+    );
+    // OIDC treats a closed browser as local logout. Explicit provider logout
+    // must instead prove that the registered callback completed this request.
+    if (response == null) {
+      throw const AppBaseApiException(
+        kind: AppBaseFailureKind.authentication,
+        code: 'sign_out_cancelled',
+        message: 'Provider sign-out was cancelled.',
+      );
+    }
+    if (request.state == null || response.state != request.state) {
+      throw const AppBaseApiException(
+        kind: AppBaseFailureKind.authentication,
+        code: 'invalid_logout_response',
+        message: 'Provider sign-out returned an invalid state.',
+      );
+    }
+    return response;
+  }
 
   Future<OidcUser?>? _refresh;
 

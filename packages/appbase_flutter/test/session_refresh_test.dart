@@ -13,8 +13,78 @@ import 'package:oidc/oidc.dart';
 // Covers: S_ACCOUNT_SESSION_INVALIDATION case=error_path
 void main() {
   late _Fixture fixture;
+  late OidcPlatform originalPlatform;
+  late _LogoutPlatform platform;
+  setUp(() {
+    originalPlatform = OidcPlatform.instance;
+    platform = _LogoutPlatform();
+    OidcPlatform.instance = platform;
+  });
+  tearDown(() => OidcPlatform.instance = originalPlatform);
   setUp(() async => fixture = await _Fixture.create());
   tearDown(() => fixture.close());
+
+  // Covers: S_CLOUD_SYNC_PROVIDER_LOGOUT case=happy_path
+  test(
+    'provider logout sends session hint and callback before clearing user',
+    () async {
+      await fixture.seed(const Duration(hours: 1));
+      final idToken = fixture.manager.currentUser!.idToken;
+      await fixture.session.endProviderSession();
+      expect(platform.logoutUri!.path, '/logout');
+      expect(platform.logoutUri!.queryParameters['id_token_hint'], idToken);
+      expect(platform.logoutUri!.queryParameters['client_id'], 'test-client');
+      expect(
+        platform.logoutUri!.queryParameters['post_logout_redirect_uri'],
+        'test:/logout',
+      );
+      expect(platform.logoutUri!.queryParameters['state'], isNotEmpty);
+      expect(await fixture.session.account(), isNull);
+      expect(await fixture.session.accessToken(), isNull);
+      await fixture.session.endProviderSession();
+      expect(platform.calls, 1);
+      await expectLater(
+        fixture.session.signIn(),
+        throwsA(isA<AppBaseApiException>()),
+      );
+      expect(platform.authorizationUri!.queryParameters['prompt'], 'login');
+    },
+  );
+
+  // Covers: S_CLOUD_SYNC_PROVIDER_LOGOUT case=error_path
+  for (final mode in ['cancel', 'bad-state', 'missing-state', 'network']) {
+    test('provider logout does not hide $mode failure', () async {
+      await fixture.seed(const Duration(hours: 1));
+      platform.mode = mode;
+      await expectLater(
+        fixture.session.endProviderSession(),
+        throwsA(isA<Exception>()),
+      );
+      expect(await fixture.session.account(), isNotNull);
+    });
+  }
+
+  // Covers: S_CLOUD_SYNC_PROVIDER_LOGOUT case=error_path
+  test(
+    'missing provider logout endpoint fails without clearing credentials',
+    () async {
+      await fixture.close();
+      fixture = await _Fixture.create(supportsLogout: false);
+      await fixture.seed(const Duration(hours: 1));
+      await expectLater(
+        fixture.session.endProviderSession(),
+        throwsA(
+          isA<AppBaseApiException>().having(
+            (error) => error.code,
+            'code',
+            'provider_logout_unavailable',
+          ),
+        ),
+      );
+      expect(platform.calls, 0);
+      expect(await fixture.session.account(), isNotNull);
+    },
+  );
 
   test('valid token is reused without a refresh request', () async {
     await fixture.seed(const Duration(hours: 1));
@@ -132,7 +202,8 @@ void main() {
 }
 
 final class _Fixture {
-  _Fixture(this.server);
+  _Fixture(this.server, {this.supportsLogout = true});
+  final bool supportsLogout;
   final HttpServer server;
   late final _Manager manager;
   late final AppBaseOidcSession session;
@@ -145,9 +216,13 @@ final class _Fixture {
   final failureServed = Completer<void>();
   Uri get origin => Uri.parse('http://127.0.0.1:${server.port}');
 
-  static Future<_Fixture> create({bool enableTimers = false}) async {
+  static Future<_Fixture> create({
+    bool enableTimers = false,
+    bool supportsLogout = true,
+  }) async {
     final fixture = _Fixture(
       await HttpServer.bind(InternetAddress.loopbackIPv4, 0),
+      supportsLogout: supportsLogout,
     );
     fixture.server.listen(fixture.handle);
     fixture.manager = _Manager(fixture.origin, enableTimers: enableTimers);
@@ -218,6 +293,7 @@ final class _Fixture {
           'issuer': origin.toString(),
           'authorization_endpoint': '$origin/authorize',
           'token_endpoint': '$origin/token',
+          if (supportsLogout) 'end_session_endpoint': '$origin/logout',
           'jwks_uri': '$origin/jwks',
           'grant_types_supported': ['authorization_code', 'refresh_token'],
         }),
@@ -266,6 +342,8 @@ final class _Manager extends AppBaseOidcManager {
         store: OidcMemoryStore(),
         settings: OidcUserManagerSettings(
           redirectUri: Uri.parse('test:/callback'),
+          postLogoutRedirectUri: Uri.parse('test:/logout'),
+          prompt: const ['login'],
           extraTokenParameters: {'resource': origin.toString()},
         ),
       );
@@ -302,4 +380,44 @@ final class _Storage extends FlutterSecureStorage {
     AppleOptions? mOptions,
     WindowsOptions? wOptions,
   }) async => 'test-device';
+}
+
+final class _LogoutPlatform extends NoOpOidcPlatform {
+  Uri? logoutUri;
+  Uri? authorizationUri;
+  int calls = 0;
+  String mode = 'success';
+
+  @override
+  Map<String, dynamic> prepareForRedirectFlow(
+    OidcPlatformSpecificOptions options,
+  ) => {};
+
+  @override
+  Future<OidcAuthorizeResponse?> getAuthorizationResponse(
+    OidcProviderMetadata metadata,
+    OidcAuthorizeRequest request,
+    OidcPlatformSpecificOptions options,
+    Map<String, dynamic> preparationResult,
+  ) async {
+    authorizationUri = request.generateUri(metadata.authorizationEndpoint!);
+    return null;
+  }
+
+  @override
+  Future<OidcEndSessionResponse?> getEndSessionResponse(
+    OidcProviderMetadata metadata,
+    OidcEndSessionRequest request,
+    OidcPlatformSpecificOptions options,
+    Map<String, dynamic> preparationResult,
+  ) async {
+    calls++;
+    logoutUri = request.generateUri(metadata.endSessionEndpoint!);
+    if (mode == 'cancel') return null;
+    if (mode == 'network') throw const SocketException('fixture unavailable');
+    return OidcEndSessionResponse.fromJson({
+      if (mode != 'missing-state')
+        'state': mode == 'bad-state' ? 'wrong' : request.state,
+    });
+  }
 }

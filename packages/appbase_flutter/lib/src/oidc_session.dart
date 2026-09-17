@@ -26,6 +26,7 @@ final class AppBaseOidcPolicy {
     required this.namespace,
     required this.redirectUri,
     required this.postLogoutRedirectUri,
+    this.prompt = const [],
     this.scopes = const [
       'openid',
       'profile',
@@ -40,6 +41,7 @@ final class AppBaseOidcPolicy {
   final AppBaseRedirectUri redirectUri;
   final AppBaseRedirectUri postLogoutRedirectUri;
   final List<String> scopes;
+  final List<String> prompt;
 
   OidcUserManager createManager(AppBaseClientConfiguration configuration) {
     return _createManager(
@@ -103,6 +105,7 @@ final class AppBaseOidcPolicy {
         redirectUri: redirectUri(),
         postLogoutRedirectUri: postLogoutRedirectUri(),
         scope: scopes,
+        prompt: prompt,
         extraAuthenticationParameters: authorizationResources,
         extraTokenParameters: tokenParameters,
         // A multi-resource grant rotates one refresh token across audiences.
@@ -366,6 +369,21 @@ final class AppBaseOidcSession implements AppBaseSession, AppBaseSessionEvents {
       );
     }
     return _account(runtime.configuration.issuer, user);
+  }
+
+  /// Explicit browser logout, separate from local cleanup on account deletion.
+  Future<void> endProviderSession() async {
+    final runtime = await _runtime();
+    await runtime.manager.init();
+    if (runtime.manager.currentUser == null) return;
+    if (runtime.manager.discoveryDocument.endSessionEndpoint == null) {
+      throw const AppBaseApiException(
+        kind: AppBaseFailureKind.authentication,
+        code: 'provider_logout_unavailable',
+        message: 'The identity provider does not support logout.',
+      );
+    }
+    await runtime.manager.logout();
   }
 
   @override

@@ -26,3 +26,15 @@ locking the old projection. The next pull starts from an empty checkpoint.
 Use opaque record identifiers. The server encrypts payloads, but collection and
 record identifiers remain index metadata. Large media and attachments belong in
 object storage and should be referenced by opaque handles.
+
+## Explicit provider logout
+
+For user-initiated sign-out, call `AppBaseOidcSession.endProviderSession()` before
+the application account session's `signOut()`. It uses the discovered end-session
+endpoint, ID-token hint, configured post-logout redirect and verified state.
+Browser cancellation, missing logout support and invalid callbacks are errors;
+the host should show them and allow another attempt. Providers may already have
+revoked tokens or cleared their browser session before a callback fails.
+`signOut()` remains local cleanup for account deletion and invalidation.
+Set `AppBaseOidcPolicy(prompt: const ['login'], ...)` when explicit sign-in must
+display the provider login page even if the browser has an SSO session.
