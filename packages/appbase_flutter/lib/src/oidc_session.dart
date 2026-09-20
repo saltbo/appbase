@@ -114,6 +114,10 @@ final class AppBaseOidcPolicy {
         scope: scopes,
         prompt: prompt,
         options: platformOptions,
+        // Complete restoration before AppBase starts sync or membership calls.
+        initMode: OidcInitMode.blockingValidate,
+        supportOfflineAuth: true,
+        shouldRemoveInvalidToken: (_, _) => true,
         extraAuthenticationParameters: authorizationResources,
         extraTokenParameters: tokenParameters,
         // A multi-resource grant rotates one refresh token across audiences.

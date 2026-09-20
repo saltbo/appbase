@@ -1,3 +1,10 @@
+## 0.3.4
+
+- Complete persisted OIDC session validation before starting protected requests,
+  avoiding concurrent exchanges of rotating refresh tokens during cold start.
+- Retain saved sessions on transient startup refresh failures while still
+  reporting request failures and clearing explicitly rejected refresh grants.
+
 ## 0.3.3
 
 - Allow applications to configure native authentication session options.

@@ -21,10 +21,42 @@ class AppBaseOidcManager extends OidcUserManager {
   final bool providerLogoutInBackground;
   Future<void>? _initializing;
   Future<void>? _disposing;
+  Future<void>? _restoring;
   final _deadlineKey = Object();
 
   @override
   Future<void> init() => _initializing ??= _bounded(super.init);
+
+  @override
+  Future<void> loadCachedTokens({bool forceRebuild = false}) {
+    final run = _bounded(
+      () => super.loadCachedTokens(forceRebuild: forceRebuild),
+    );
+    _restoring = run;
+    return run.whenComplete(() {
+      if (identical(_restoring, run)) _restoring = null;
+    });
+  }
+
+  @override
+  bool handleOfflineEligibleFailure({
+    required Object error,
+    required OidcToken? fallbackToken,
+    bool scheduleRetry = false,
+    void Function(Duration retryDelay)? onRetryScheduled,
+    bool emitRepeatFailureWarning = false,
+  }) {
+    // Startup may retain a previously verified identity while offline. Actual
+    // API requests must still surface the refresh error, never use stale tokens.
+    if (_restoring == null) return false;
+    return super.handleOfflineEligibleFailure(
+      error: error,
+      fallbackToken: fallbackToken,
+      scheduleRetry: scheduleRetry,
+      onRetryScheduled: onRetryScheduled,
+      emitRepeatFailureWarning: emitRepeatFailureWarning,
+    );
+  }
 
   @override
   Future<OidcUser?> handleSuccessfulAuthResponse({
@@ -146,6 +178,7 @@ class AppBaseOidcManager extends OidcUserManager {
     OidcProviderMetadata? discoveryDocumentOverride,
     Map<String, dynamic>? extraBodyFields,
   }) async {
+    await _restoring;
     try {
       final user = await _bounded(
         () => super.refreshToken(
@@ -182,6 +215,7 @@ class AppBaseOidcManager extends OidcUserManager {
   Future<void> forgetUser() async {
     // A completed refresh must never resurrect a session after explicit logout.
     try {
+      await _restoring;
       await _refresh;
     } on Object {
       // Logout still removes credentials when an outstanding refresh failed.
@@ -213,6 +247,7 @@ class AppBaseOidcManager extends OidcUserManager {
     Duration minValidity = const Duration(seconds: 30),
     bool forceRefresh = false,
   }) async {
+    await _restoring;
     final user = currentUser;
     if (user == null) return null;
     if (!forceRefresh &&

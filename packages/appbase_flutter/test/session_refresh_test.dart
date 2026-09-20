@@ -24,7 +24,6 @@ void main() {
   setUp(() async => fixture = await _Fixture.create());
   tearDown(() => fixture.close());
 
-  // Covers: S_CLOUD_SYNC_PROVIDER_LOGOUT case=happy_path
   test(
     'provider logout sends session hint and callback before clearing user',
     () async {
@@ -51,7 +50,6 @@ void main() {
     },
   );
 
-  // Covers: S_CLOUD_SYNC_PROVIDER_LOGOUT case=error_path
   for (final mode in ['cancel', 'bad-state', 'missing-state', 'network']) {
     test('provider logout does not hide $mode failure', () async {
       await fixture.seed(const Duration(hours: 1));
@@ -64,7 +62,6 @@ void main() {
     });
   }
 
-  // Covers: S_CLOUD_SYNC_PROVIDER_LOGOUT case=error_path
   test(
     'missing provider logout endpoint fails without clearing credentials',
     () async {
@@ -86,6 +83,7 @@ void main() {
     },
   );
 
+  // Covers: S_CLOUD_SYNC_PROVIDER_LOGOUT case=happy_path
   test('background logout calls HTTP without invoking the browser', () async {
     await fixture.close();
     fixture = await _Fixture.create(providerLogoutInBackground: true);
@@ -102,6 +100,7 @@ void main() {
     expect(await fixture.session.accessToken(), isNull);
   });
 
+  // Covers: S_CLOUD_SYNC_PROVIDER_LOGOUT case=error_path
   for (final status in [302, 401, 503]) {
     test(
       'background logout rejects HTTP $status without clearing user',
@@ -132,6 +131,72 @@ void main() {
     expect(await fixture.session.accessToken(), 'old-token');
     expect(fixture.exchanges, 0);
   });
+
+  test(
+    'cold start restores an expired access token from persisted credentials',
+    () async {
+      await fixture.seed(const Duration(seconds: -10));
+      fixture.responseGate = Completer<void>();
+      final restored = _Manager(fixture.origin, store: fixture.manager.store);
+      addTearDown(restored.dispose);
+      final initialization = restored.init();
+      await fixture.requestStarted.future;
+      final token = initialization.then((_) => restored.getAccessToken());
+      fixture.responseGate!.complete();
+      await initialization;
+      expect(restored.currentUser, isNotNull);
+      expect(await token, 'fresh-token');
+      expect(fixture.exchanges, 1);
+    },
+  );
+
+  test(
+    'cold start preserves credentials after a temporary refresh failure',
+    () async {
+      await fixture.seed(const Duration(seconds: -10));
+      fixture.error = 'temporarily_unavailable';
+      final restored = _Manager(fixture.origin, store: fixture.manager.store);
+      addTearDown(restored.dispose);
+      await restored.init();
+      expect(fixture.exchanges, 1);
+      expect(restored.currentUser, isNotNull);
+      expect(
+        await restored.store.get(
+          OidcStoreNamespace.secureTokens,
+          key: OidcConstants_Store.currentToken,
+          managerId: restored.id,
+        ),
+        isNotNull,
+      );
+      await expectLater(
+        restored.getAccessToken(),
+        throwsA(isA<OidcException>()),
+      );
+      expect(restored.currentUser, isNotNull);
+      fixture.error = null;
+      expect(await restored.getAccessToken(), 'fresh-token');
+    },
+  );
+
+  test(
+    'cold start clears a refresh grant explicitly rejected by the provider',
+    () async {
+      await fixture.seed(const Duration(seconds: -10));
+      fixture.error = 'invalid_grant';
+      final restored = _Manager(fixture.origin, store: fixture.manager.store);
+      addTearDown(restored.dispose);
+      await restored.init();
+      expect(restored.currentUser, isNull);
+      expect(
+        await restored.store.get(
+          OidcStoreNamespace.secureTokens,
+          key: OidcConstants_Store.currentToken,
+          managerId: restored.id,
+        ),
+        isNull,
+      );
+    },
+  );
 
   test('real expiry timer survives a failed proactive refresh', () async {
     await fixture.close();
@@ -328,11 +393,20 @@ final class _Fixture {
     await Future<void>.delayed(Duration.zero);
   }
 
-  String jwt() {
-    String encode(Object value) =>
-        base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
-    return "${encode({'alg': 'none'})}.${encode({'iss': origin.toString(), 'aud': 'test-client', 'sub': 'user-1', 'iat': DateTime.now().millisecondsSinceEpoch ~/ 1000, 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.";
-  }
+  static final signingKey = JsonWebKey.generate('RS256');
+
+  String jwt() =>
+      (JsonWebSignatureBuilder()
+            ..jsonContent = {
+              'iss': origin.toString(),
+              'aud': 'test-client',
+              'sub': 'user-1',
+              'iat': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+              'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600,
+            }
+            ..addRecipient(signingKey, algorithm: 'RS256'))
+          .build()
+          .toCompactSerialization();
 
   Future<void> handle(HttpRequest request) async {
     request.response.headers.contentType = ContentType.json;
@@ -344,6 +418,7 @@ final class _Fixture {
           'token_endpoint': '$origin/token',
           if (supportsLogout) 'end_session_endpoint': '$origin/logout',
           'jwks_uri': '$origin/jwks',
+          'id_token_signing_alg_values_supported': ['RS256'],
           'grant_types_supported': ['authorization_code', 'refresh_token'],
         }),
       );
@@ -378,7 +453,16 @@ final class _Fixture {
         );
       }
     } else {
-      request.response.write('{"keys":[]}');
+      request.response.write(
+        jsonEncode({
+          'keys': [
+            {
+              for (final key in ['kty', 'n', 'e'])
+                key: signingKey.toJson()[key],
+            },
+          ],
+        }),
+      );
     }
     await request.response.close();
   }
@@ -392,6 +476,7 @@ final class _Fixture {
 final class _Manager extends AppBaseOidcManager {
   _Manager(
     Uri origin, {
+    OidcStore? store,
     this.enableTimers = false,
     super.providerLogoutInBackground,
   }) : super(
@@ -399,11 +484,14 @@ final class _Manager extends AppBaseOidcManager {
          clientCredentials: OidcClientAuthentication.none(
            clientId: 'test-client',
          ),
-         store: OidcMemoryStore(),
+         store: store ?? OidcMemoryStore(),
          settings: OidcUserManagerSettings(
            redirectUri: Uri.parse('test:/callback'),
            postLogoutRedirectUri: Uri.parse('test:/logout'),
            prompt: const ['login'],
+           initMode: OidcInitMode.blockingValidate,
+           supportOfflineAuth: true,
+           shouldRemoveInvalidToken: (_, _) => true,
            extraTokenParameters: {'resource': origin.toString()},
          ),
        );
