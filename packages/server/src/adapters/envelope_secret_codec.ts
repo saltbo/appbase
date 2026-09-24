@@ -36,6 +36,9 @@ export class D1EnvelopeSecretCodec implements SecretCodec {
     private readonly database: D1Database,
     masterKeyOrKeyring: string | MasterKeyring,
     keyVersion = 1,
+    private readonly encryptionOwner: (
+      owner: string,
+    ) => Promise<string> = async (owner) => owner,
   ) {
     this.keyring =
       typeof masterKeyOrKeyring === "string"
@@ -58,7 +61,7 @@ export class D1EnvelopeSecretCodec implements SecretCodec {
       {
         name: "AES-GCM",
         iv: nonce,
-        additionalData: aad(ownerSub, collection, recordId, key.version),
+        additionalData: aad(key.owner, collection, recordId, key.version),
       },
       key.cryptoKey,
       ownedBytes(new TextEncoder().encode(JSON.stringify(payload))),
@@ -85,7 +88,7 @@ export class D1EnvelopeSecretCodec implements SecretCodec {
           name: "AES-GCM",
           iv: fromBase64Url(parsed.nonce),
           additionalData: aad(
-            ownerSub,
+            key.owner,
             collection,
             recordId,
             parsed.keyVersion,
@@ -246,7 +249,8 @@ export class D1EnvelopeSecretCodec implements SecretCodec {
   private async userKey(
     ownerSub: string,
     requestedVersion = this.keyring.currentVersion,
-  ): Promise<{ cryptoKey: CryptoKey; version: number }> {
+  ): Promise<{ cryptoKey: CryptoKey; version: number; owner: string }> {
+    const owner = await this.encryptionOwner(ownerSub);
     let row = await this.database
       .prepare(
         `SELECT wrapped_key, wrap_nonce, key_version FROM appbase_user_keys
@@ -266,7 +270,7 @@ export class D1EnvelopeSecretCodec implements SecretCodec {
           name: "AES-GCM",
           iv: wrapNonce,
           additionalData: new TextEncoder().encode(
-            `appbase:user-key:${ownerSub}:${requestedVersion}`,
+            `appbase:user-key:${owner}:${requestedVersion}`,
           ),
         },
         masterKey,
@@ -303,7 +307,7 @@ export class D1EnvelopeSecretCodec implements SecretCodec {
         name: "AES-GCM",
         iv: fromBase64Url(row.wrap_nonce),
         additionalData: new TextEncoder().encode(
-          `appbase:user-key:${ownerSub}:${row.key_version}`,
+          `appbase:user-key:${owner}:${row.key_version}`,
         ),
       },
       masterKey,
@@ -312,6 +316,7 @@ export class D1EnvelopeSecretCodec implements SecretCodec {
     return {
       cryptoKey: await importAesKey(new Uint8Array(raw)),
       version: row.key_version,
+      owner,
     };
   }
 
