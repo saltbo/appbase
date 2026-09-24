@@ -167,3 +167,9 @@ availability on entry and foreground return. The service must be upgraded before
 the client: older servers omit policy, and older clients ignore it. This is an
 application purchase-entry control, not store transaction authorization; it does
 not stop automatic renewals, in-flight purchases, callbacks or valid entitlements.
+
+Application account IDs are opaque to clients. New registrations use UUID v4.
+A server may retain an old accountId as an immutable alias when normalizing its
+storage identifiers; the alias always resolves to that same incarnation, including
+its deletion tombstone, never a replacement. Clients must not derive identity or
+billing environment from an account ID prefix.

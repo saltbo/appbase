@@ -6,10 +6,16 @@ import type {
 
 export class D1AccountRepository implements AccountRepository {
   constructor(readonly db: D1Database) {}
+  // Ciphertext and wrapped keys retain the authenticated context used when created.
+  async encryptionOwner(id: string): Promise<string> {
+    const account = await this.find(id);
+    if (!account) throw new Error("Application account does not exist.");
+    return account.clientId ?? account.id;
+  }
   current(subject: string): Promise<ApplicationAccount | null> {
     return this.db
       .prepare(
-        "SELECT id,subject,status,legacy FROM appbase_accounts WHERE subject=?",
+        "SELECT id,subject,status,legacy,previous_id AS clientId FROM appbase_accounts WHERE subject=?",
       )
       .bind(subject)
       .first();
@@ -17,7 +23,7 @@ export class D1AccountRepository implements AccountRepository {
   find(id: string): Promise<ApplicationAccount | null> {
     return this.db
       .prepare(
-        "SELECT id,subject,status,legacy FROM appbase_accounts WHERE id=?",
+        "SELECT id,subject,status,legacy,previous_id AS clientId FROM appbase_accounts WHERE id=?1 OR previous_id=?1",
       )
       .bind(id)
       .first();
@@ -152,6 +158,7 @@ export class D1AccountRepository implements AccountRepository {
   }
 }
 export const accountCrypto = {
+  accountId: () => crypto.randomUUID(),
   random: () => crypto.randomUUID().replaceAll("-", ""),
   async hash(value: string) {
     return [

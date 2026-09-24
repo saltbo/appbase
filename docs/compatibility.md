@@ -143,3 +143,11 @@ availability on entry and foreground return. The service must be upgraded before
 the client: older servers omit policy, and older clients ignore it. This is an
 application purchase-entry control, not store transaction authorization; it does
 not stop automatic renewals, in-flight purchases, callbacks or valid entitlements.
+
+## Canonical application account UUIDs
+
+New accounts use UUID v4. Migrations 0009 and the separate normalize_account_ids.sql data step require an expand/deploy/migrate
+rollout; do not apply the separate normalize_account_ids.sql data step with the old Worker. Existing client bindings remain
+valid aliases while database ownership becomes canonical. Protocol wire shapes,
+client storage keys and encrypted contexts remain unchanged for existing users.
+See [the migration runbook](account-uuid-migration.md).

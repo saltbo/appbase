@@ -28,3 +28,12 @@ Feature: Application account lifecycle
     Then their storage owner IDs and encryption contexts remain unchanged
     And existing active accounts remain usable during client migration
     And old identity tokens never resolve to a replacement account
+
+  Scenario: Standard UUID account identifiers preserve existing clients
+    Given an existing prefixed application account with encrypted records and payment identities
+    When the UUID migration runs
+    Then its account and all storage owner references use the same standard UUID
+    And its historical encryption context remains readable
+    And existing device sessions and account bindings still address that account
+    And new registrations use standard UUID v4 identifiers
+    And deletion and re-registration never redirect an old binding to a replacement

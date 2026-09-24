@@ -48,6 +48,7 @@ beforeAll(async () => {
     "0006_revenuecat_grants.sql",
     "0007_account_deletion.sql",
     "0008_application_accounts.sql",
+    "0009_account_uuid_context.sql",
   ]) {
     const sql = readFileSync(
       new URL("../migrations/" + migration, import.meta.url),
@@ -206,6 +207,10 @@ describe("application account incarnations", () => {
       deviceId: "tablet",
       register: false,
     });
+    expect(first.accountId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(first.accessToken).toMatch(/^ab1_[0-9a-f]{64}$/);
     expect(second.accountId).toBe(first.accountId);
     const oldPrincipal = await service.authenticate(first.accessToken);
     expect(accountOwner(await service.requireAccount(oldPrincipal))).toBe(
