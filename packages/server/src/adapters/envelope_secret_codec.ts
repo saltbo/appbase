@@ -31,6 +31,10 @@ export type KeyRotationBatchResult = {
 
 export class D1EnvelopeSecretCodec implements SecretCodec {
   private readonly keyring: MasterKeyring;
+  private readonly userKeys = new Map<
+    string,
+    Promise<{ cryptoKey: CryptoKey; version: number; owner: string }>
+  >();
 
   constructor(
     private readonly database: D1Database,
@@ -116,7 +120,7 @@ export class D1EnvelopeSecretCodec implements SecretCodec {
         .prepare(
           `SELECT CAST(json_extract(payload_json, '$.keyVersion') AS INTEGER) AS key_version,
                   COUNT(*) AS item_count
-           FROM appbase_records
+           FROM (SELECT payload_json FROM appbase_records UNION ALL SELECT payload_json FROM appbase_device_record_heads UNION ALL SELECT payload_json FROM appbase_record_creation_baselines)
            WHERE payload_json IS NOT NULL
            GROUP BY json_extract(payload_json, '$.keyVersion')`,
         )
@@ -166,8 +170,9 @@ export class D1EnvelopeSecretCodec implements SecretCodec {
     }
     const rows = await this.database
       .prepare(
-        `SELECT sequence, owner_sub, collection, record_id, payload_json
-         FROM appbase_records
+        `SELECT sequence, owner_sub, collection, record_id, payload_json, storage
+         FROM (SELECT sequence, owner_sub, collection, record_id, payload_json, 'appbase_records' AS storage FROM appbase_records
+           UNION ALL SELECT sequence, owner_sub, collection, record_id, payload_json, 'appbase_device_record_heads' AS storage FROM appbase_device_record_heads UNION ALL SELECT sequence,owner_sub,collection,record_id,payload_json,'appbase_record_creation_baselines' AS storage FROM appbase_record_creation_baselines)
          WHERE payload_json IS NOT NULL
            AND CAST(json_extract(payload_json, '$.keyVersion') AS INTEGER) = ?1
          ORDER BY sequence
@@ -180,6 +185,10 @@ export class D1EnvelopeSecretCodec implements SecretCodec {
         collection: string;
         record_id: string;
         payload_json: string;
+        storage:
+          | "appbase_records"
+          | "appbase_device_record_heads"
+          | "appbase_record_creation_baselines";
       }>();
     let migrated = 0;
     for (const row of rows.results) {
@@ -198,7 +207,7 @@ export class D1EnvelopeSecretCodec implements SecretCodec {
       );
       const result = await this.database
         .prepare(
-          `UPDATE appbase_records
+          `UPDATE ${row.storage}
            SET payload_json = ?1
            WHERE sequence = ?2 AND payload_json = ?3`,
         )
@@ -237,7 +246,7 @@ export class D1EnvelopeSecretCodec implements SecretCodec {
     const row = await this.database
       .prepare(
         `SELECT COUNT(*) AS item_count
-         FROM appbase_records
+         FROM (SELECT payload_json FROM appbase_records UNION ALL SELECT payload_json FROM appbase_device_record_heads UNION ALL SELECT payload_json FROM appbase_record_creation_baselines)
          WHERE payload_json IS NOT NULL
            AND CAST(json_extract(payload_json, '$.keyVersion') AS INTEGER) = ?1`,
       )
@@ -246,7 +255,24 @@ export class D1EnvelopeSecretCodec implements SecretCodec {
     return row?.item_count ?? 0;
   }
 
-  private async userKey(
+  private userKey(
+    ownerSub: string,
+    requestedVersion = this.keyring.currentVersion,
+  ) {
+    const cacheKey = JSON.stringify([ownerSub, requestedVersion]);
+    let pending = this.userKeys.get(cacheKey);
+    if (!pending) {
+      pending = this.loadUserKey(ownerSub, requestedVersion);
+      this.userKeys.set(cacheKey, pending);
+      pending.catch(() => {
+        if (this.userKeys.get(cacheKey) === pending)
+          this.userKeys.delete(cacheKey);
+      });
+    }
+    return pending;
+  }
+
+  private async loadUserKey(
     ownerSub: string,
     requestedVersion = this.keyring.currentVersion,
   ): Promise<{ cryptoKey: CryptoKey; version: number; owner: string }> {

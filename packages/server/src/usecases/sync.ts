@@ -1,6 +1,7 @@
 import { decodeCursor, encodeCursor } from "../domain/cursor.js";
 import {
   defaultThreeWayMerge,
+  retainConflictPolicy,
   type JsonObject,
   type MutationResult,
   type PullResult,
@@ -39,12 +40,14 @@ export async function pullChanges(
   ownerSub: string,
   cursor: string | undefined,
   limit: number,
+  legacy = false,
 ): Promise<PullResult> {
   const afterSequence = decodeCursor(cursor);
   const versions = await deps.repository.listChanges(
     ownerSub,
     afterSequence,
     limit + 1,
+    legacy,
   );
   const page = versions.slice(0, limit);
   const changes = await Promise.all(
@@ -67,6 +70,8 @@ async function pushMutation(
     ownerSub,
     mutation.deviceId,
     mutation.mutationId,
+    mutation.collection,
+    mutation.recordId,
   );
   if (replay !== null) {
     return {
@@ -100,13 +105,14 @@ async function pushMutation(
     const currentPayload =
       current === null ? null : await logicalPayload(deps, current);
     const conflicted = (current?.revision ?? null) !== mutation.baseRevision;
-    const logical = conflicted
+    const merged = conflicted
       ? defaultThreeWayMerge({
           ancestor: ancestorPayload,
           server: currentPayload,
           client: clientPayload,
         })
       : clientPayload;
+    const logical = retainConflictPolicy(merged, currentPayload);
     const storedPayload =
       logical === null
         ? null
@@ -141,6 +147,8 @@ async function pushMutation(
       ownerSub,
       mutation.deviceId,
       mutation.mutationId,
+      mutation.collection,
+      mutation.recordId,
     );
     if (concurrentReplay !== null) {
       return {

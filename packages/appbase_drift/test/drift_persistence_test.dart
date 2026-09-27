@@ -33,6 +33,201 @@ void main() {
   tearDown(() => database.close());
 
   test(
+    'pending local values survive remote pages while metadata advances, then reconcile after acknowledgement',
+    () async {
+      await persistence.commit(
+        const [
+          AppBaseMutationDraft(
+            collection: 'notes',
+            recordId: 'n1',
+            operation: AppBaseMutationOperation.put,
+            payload: {'value': 'local'},
+          ),
+        ],
+        () => database.customStatement('INSERT INTO notes VALUES (?, ?)', [
+          'n1',
+          'local',
+        ]),
+      );
+      final pending = (await persistence.loadPending(
+        session.value!,
+        limit: 50,
+      )).single;
+      final change = AppBaseRemoteChange(
+        sequence: 1,
+        collection: 'notes',
+        recordId: 'n1',
+        revision: 'remote',
+        deleted: false,
+        createdAt: DateTime.utc(2026),
+        payload: const {'value': 'remote'},
+      );
+      final page = AppBaseChangePage(items: [change], checkpoint: '1');
+      await persistence.applyPull(session.value!, page);
+      expect(
+        (await database.customSelect('SELECT value FROM notes').getSingle())
+            .read<String>('value'),
+        'local',
+      );
+      expect(
+        (await database
+                .customSelect('SELECT revision FROM appbase_records')
+                .getSingle())
+            .read<String>('revision'),
+        'remote',
+      );
+      await persistence.acknowledge(session.value!, [
+        AppBaseMutationResult(mutationId: pending.mutationId, change: change),
+      ]);
+      await database.customStatement('DELETE FROM notes');
+      await persistence.applyPull(session.value!, page);
+      expect(
+        (await database.customSelect('SELECT value FROM notes').getSingle())
+            .read<String>('value'),
+        'remote',
+      );
+    },
+  );
+
+  test(
+    'mutation order survives a restarted persistence instance and same-clock writes',
+    () async {
+      Future<String> write() async {
+        await persistence.commit(const [
+          AppBaseMutationDraft(
+            collection: 'notes',
+            recordId: 'n',
+            operation: AppBaseMutationOperation.put,
+            payload: {'value': 'v'},
+          ),
+        ], () async {});
+        return (await persistence.loadPending(
+          session.value!,
+          limit: 50,
+        )).single.mutationId;
+      }
+
+      final first = await write();
+      persistence = AppBaseDriftPersistence(
+        database,
+        session: session,
+        adapters: [adapter],
+        clock: () => DateTime.utc(2020),
+      );
+      final second = await write();
+      expect(
+        int.parse(second.split(':')[1]),
+        greaterThan(int.parse(first.split(':')[1])),
+      );
+      expect(await _count(database, 'appbase_outbox'), 1);
+    },
+  );
+
+  test(
+    'acknowledging an in-flight version preserves a newer pending edit and stale acknowledgements cannot regress state',
+    () async {
+      Future<AppBasePendingMutation> edit(String value) async {
+        await persistence.commit(
+          [
+            AppBaseMutationDraft(
+              collection: 'notes',
+              recordId: 'n1',
+              operation: AppBaseMutationOperation.put,
+              payload: {'value': value},
+            ),
+          ],
+          () => database.customStatement(
+            'INSERT INTO notes VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET value=excluded.value',
+            ['n1', value],
+          ),
+        );
+        return (await persistence.loadPending(
+          session.value!,
+          limit: 50,
+        )).single;
+      }
+
+      final first = await edit('first');
+      final second = await edit('second');
+      AppBaseRemoteChange change(int sequence, String value) =>
+          AppBaseRemoteChange(
+            sequence: sequence,
+            collection: 'notes',
+            recordId: 'n1',
+            revision: 'revision-$sequence',
+            deleted: false,
+            createdAt: DateTime.utc(2026),
+            payload: {'value': value},
+          );
+      await persistence.acknowledge(session.value!, [
+        AppBaseMutationResult(
+          mutationId: first.mutationId,
+          change: change(1, 'first'),
+        ),
+      ]);
+      expect(
+        (await database.customSelect('SELECT value FROM notes').getSingle())
+            .read<String>('value'),
+        'second',
+      );
+      expect(
+        (await persistence.loadPending(
+          session.value!,
+          limit: 50,
+        )).single.mutationId,
+        second.mutationId,
+      );
+      await persistence.acknowledge(session.value!, [
+        AppBaseMutationResult(
+          mutationId: second.mutationId,
+          change: change(2, 'second'),
+        ),
+      ]);
+      await persistence.acknowledge(session.value!, [
+        AppBaseMutationResult(
+          mutationId: first.mutationId,
+          change: change(1, 'first'),
+        ),
+      ]);
+      expect(
+        (await database.customSelect('SELECT value FROM notes').getSingle())
+            .read<String>('value'),
+        'second',
+      );
+    },
+  );
+
+  test(
+    'local account reset clears auxiliary state without prohibiting later sign-in to that account',
+    () async {
+      await persistence.commit(const [
+        AppBaseMutationDraft(
+          collection: 'notes',
+          recordId: 'n1',
+          operation: AppBaseMutationOperation.put,
+          payload: {'value': 'v'},
+        ),
+      ], () => database.customStatement("INSERT INTO notes VALUES ('n1','v')"));
+      await persistence.resetLocalAccount(session.value!);
+      expect(await _count(database, 'appbase_outbox_clock'), 1);
+      expect(await _count(database, 'appbase_records_projections'), 0);
+      await persistence.saveAccount(session.value!);
+      await persistence.commit(
+        const [
+          AppBaseMutationDraft(
+            collection: 'notes',
+            recordId: 'n1',
+            operation: AppBaseMutationOperation.put,
+            payload: {'value': 'again'},
+          ),
+        ],
+        () =>
+            database.customStatement("INSERT INTO notes VALUES ('n1','again')"),
+      );
+      expect(await _count(database, 'appbase_outbox'), 1);
+    },
+  );
+  test(
     'renames legacy sync state without resetting seed, cursor or outbox',
     () async {
       await persistence.seedIfNeeded(session.value!);
@@ -249,7 +444,7 @@ final class _Adapter implements AppBaseCollectionAdapter {
   @override
   Future<void> apply(AppBaseAccount account, AppBaseRemoteChange change) async {
     await database.customStatement(
-      'INSERT INTO notes (id, value) VALUES (?, ?)',
+      'INSERT INTO notes (id, value) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET value=excluded.value',
       [change.recordId, change.payload!['value']],
     );
     if (fail) throw StateError('projection failed');

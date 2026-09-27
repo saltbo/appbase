@@ -47,6 +47,18 @@ final class AppBaseDriftPersistence
   @override
   Future<void> deleteAccount(AppBaseAccount account) async {
     _deletedAccounts.add((account.issuer, account.storageKey));
+    await _clearLocalAccount(account, deletion: true);
+  }
+
+  /// Clear an installation's account data without declaring the remote account deleted.
+  Future<void> resetLocalAccount(AppBaseAccount account) =>
+      _clearLocalAccount(account, deletion: false);
+
+  Future<void> _clearLocalAccount(
+    AppBaseAccount account, {
+    required bool deletion,
+  }) async {
+    await _ensureAuxiliarySchema();
     for (final adapter in _adapters.values) {
       if (adapter is AppBaseCollectionDeletionAdapter) {
         await (adapter as AppBaseCollectionDeletionAdapter).deleteAccount(
@@ -57,7 +69,13 @@ final class AppBaseDriftPersistence
       }
     }
     await database.transaction(() async {
-      for (final table in [tables.outbox, tables.records, tables.syncState]) {
+      for (final table in [
+        tables.outbox,
+        tables.records,
+        tables.syncState,
+        if (deletion) tables.mutationClock,
+        tables.deferredProjections,
+      ]) {
         await database.customStatement(
           'DELETE FROM $table WHERE issuer = ? AND subject = ?',
           [account.issuer.toString(), account.storageKey],
@@ -68,6 +86,7 @@ final class AppBaseDriftPersistence
 
   @override
   Future<AppBaseAccount> saveAccount(AppBaseAccount account) async {
+    await _ensureAuxiliarySchema();
     final existing = await _account(account);
     final active = await database
         .customSelect(
@@ -196,7 +215,9 @@ final class AppBaseDriftPersistence
           Variable<String>(account.storageKey),
         ],
       );
+      await _applyChange(account, result.change);
     }
+    await _drainDeferred(account);
   });
 
   @override
@@ -206,38 +227,12 @@ final class AppBaseDriftPersistence
   ) async {
     await database.transaction(() async {
       for (final change in page.items) {
-        final adapter = _adapters[change.collection];
-        if (adapter == null) {
-          throw AppBaseApiException(
-            kind: AppBaseFailureKind.validation,
-            code: 'unknown_collection',
-            message:
-                'No client adapter is registered for ${change.collection}.',
-          );
-        }
-        await adapter.apply(account, change);
-        await database.customStatement(
-          '''
-          INSERT INTO ${tables.records}
-            (issuer, subject, collection, record_id, revision, deleted,
-             change_sequence, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(issuer, subject, collection, record_id) DO UPDATE SET
-            revision = excluded.revision,
-            deleted = excluded.deleted,
-            change_sequence = excluded.change_sequence,
-            updated_at = excluded.updated_at
-          ''',
-          [
-            account.issuer.toString(),
-            account.storageKey,
-            change.collection,
-            change.recordId,
-            change.revision,
-            change.deleted ? 1 : 0,
-            change.sequence,
-            change.createdAt.millisecondsSinceEpoch,
-          ],
+        await _applyChange(account, change);
+      }
+      await _drainDeferred(account);
+      if (page.nextPageToken == null && await _hasDeferred(account)) {
+        throw const AppBaseLocalException(
+          message: 'Remote records reference missing parent records.',
         );
       }
       await database.customUpdate(
@@ -255,6 +250,172 @@ final class AppBaseDriftPersistence
       );
     });
     return account.copyWith(checkpoint: page.checkpoint);
+  }
+
+  Future<bool> _applyChange(
+    AppBaseAccount account,
+    AppBaseRemoteChange change,
+  ) async {
+    final previous = await database
+        .customSelect(
+          'SELECT change_sequence FROM ${tables.records} WHERE issuer = ? AND subject = ? AND collection = ? AND record_id = ?',
+          variables: [
+            Variable<String>(account.issuer.toString()),
+            Variable<String>(account.storageKey),
+            Variable<String>(change.collection),
+            Variable<String>(change.recordId),
+          ],
+        )
+        .getSingleOrNull();
+    if (previous != null &&
+        previous.read<int>('change_sequence') > change.sequence) {
+      await _clearDeferred(
+        account,
+        change,
+        previous.read<int>('change_sequence'),
+      );
+      return true;
+    }
+    final adapter = _adapters[change.collection];
+    if (adapter == null) {
+      throw AppBaseApiException(
+        kind: AppBaseFailureKind.validation,
+        code: 'unknown_collection',
+        message: 'No client adapter is registered for ${change.collection}.',
+      );
+    }
+    final pending = await database
+        .customSelect(
+          'SELECT mutation_id FROM ${tables.outbox} WHERE issuer = ? AND subject = ? AND collection = ? AND record_id = ? LIMIT 1',
+          variables: [
+            Variable<String>(account.issuer.toString()),
+            Variable<String>(account.storageKey),
+            Variable<String>(change.collection),
+            Variable<String>(change.recordId),
+          ],
+        )
+        .getSingleOrNull();
+    var deferred = false;
+    if (pending == null) {
+      if (adapter is AppBaseProjectionReadiness &&
+          !await (adapter as AppBaseProjectionReadiness).readyForProjection(
+            account,
+            change,
+          )) {
+        deferred = true;
+        await database.customStatement(
+          '''INSERT INTO ${tables.deferredProjections} (issuer,subject,collection,record_id,change_sequence,change_json)
+          VALUES (?,?,?,?,?,?) ON CONFLICT(issuer,subject,collection,record_id) DO UPDATE SET change_sequence=excluded.change_sequence,change_json=excluded.change_json
+          WHERE change_sequence<=excluded.change_sequence''',
+          [
+            account.issuer.toString(),
+            account.storageKey,
+            change.collection,
+            change.recordId,
+            change.sequence,
+            jsonEncode({
+              'sequence': change.sequence,
+              'collection': change.collection,
+              'recordId': change.recordId,
+              'revision': change.revision,
+              'deleted': change.deleted,
+              'createdAt': change.createdAt.toIso8601String(),
+              'payload': change.payload,
+            }),
+          ],
+        );
+      } else {
+        await adapter.apply(account, change);
+      }
+    }
+    if (!deferred) {
+      await _clearDeferred(account, change, change.sequence);
+    }
+    await database.customStatement(
+      '''
+          INSERT INTO ${tables.records}
+            (issuer, subject, collection, record_id, revision, deleted,
+             change_sequence, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(issuer, subject, collection, record_id) DO UPDATE SET
+            revision = excluded.revision,
+            deleted = excluded.deleted,
+            change_sequence = excluded.change_sequence,
+            updated_at = excluded.updated_at
+          ''',
+      [
+        account.issuer.toString(),
+        account.storageKey,
+        change.collection,
+        change.recordId,
+        change.revision,
+        change.deleted ? 1 : 0,
+        change.sequence,
+        change.createdAt.millisecondsSinceEpoch,
+      ],
+    );
+    return !deferred;
+  }
+
+  Future<void> _clearDeferred(
+    AppBaseAccount account,
+    AppBaseRemoteChange change,
+    int sequence,
+  ) => database.customStatement(
+    'DELETE FROM ${tables.deferredProjections} WHERE issuer=? AND subject=? AND collection=? AND record_id=? AND change_sequence<=?',
+    [
+      account.issuer.toString(),
+      account.storageKey,
+      change.collection,
+      change.recordId,
+      sequence,
+    ],
+  );
+
+  Future<bool> _hasDeferred(AppBaseAccount account) async =>
+      (await database
+          .customSelect(
+            'SELECT 1 FROM ${tables.deferredProjections} WHERE issuer=? AND subject=? LIMIT 1',
+            variables: [
+              Variable<String>(account.issuer.toString()),
+              Variable<String>(account.storageKey),
+            ],
+          )
+          .getSingleOrNull()) !=
+      null;
+
+  Future<void> _drainDeferred(AppBaseAccount account) async {
+    while (true) {
+      final rows = await database
+          .customSelect(
+            'SELECT change_json FROM ${tables.deferredProjections} WHERE issuer=? AND subject=? ORDER BY change_sequence',
+            variables: [
+              Variable<String>(account.issuer.toString()),
+              Variable<String>(account.storageKey),
+            ],
+          )
+          .get();
+      var progressed = false;
+      for (final row in rows) {
+        final value =
+            jsonDecode(row.read<String>('change_json')) as Map<String, dynamic>;
+        final change = AppBaseRemoteChange(
+          sequence: value['sequence'] as int,
+          collection: value['collection'] as String,
+          recordId: value['recordId'] as String,
+          revision: value['revision'] as String,
+          deleted: value['deleted'] as bool,
+          createdAt: DateTime.parse(value['createdAt'] as String),
+          payload: (value['payload'] as Map?)?.cast<String, Object?>(),
+        );
+        if (await _applyChange(account, change)) {
+          progressed = true;
+        }
+      }
+      if (!progressed) {
+        return;
+      }
+    }
   }
 
   @override
@@ -350,7 +511,7 @@ final class AppBaseDriftPersistence
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''',
       [
-        _id(),
+        await _orderedMutationId(account),
         account.issuer.toString(),
         account.storageKey,
         account.deviceId,
@@ -363,6 +524,40 @@ final class AppBaseDriftPersistence
         _clock().millisecondsSinceEpoch,
       ],
     );
+  }
+
+  Future<void> _ensureAuxiliarySchema() async {
+    await database.customStatement('''
+      CREATE TABLE IF NOT EXISTS ${tables.mutationClock} (
+        issuer TEXT NOT NULL, subject TEXT NOT NULL, device_id TEXT NOT NULL,
+        value INTEGER NOT NULL, PRIMARY KEY (issuer, subject, device_id)
+      )
+    ''');
+    await database.customStatement('''
+      CREATE TABLE IF NOT EXISTS ${tables.deferredProjections} (
+        issuer TEXT NOT NULL, subject TEXT NOT NULL, collection TEXT NOT NULL,
+        record_id TEXT NOT NULL, change_sequence INTEGER NOT NULL, change_json TEXT NOT NULL,
+        PRIMARY KEY (issuer,subject,collection,record_id)
+      )
+    ''');
+  }
+
+  Future<String> _orderedMutationId(AppBaseAccount account) async {
+    await _ensureAuxiliarySchema();
+    final row = await database
+        .customSelect(
+          '''INSERT INTO ${tables.mutationClock} (issuer, subject, device_id, value)
+      VALUES (?, ?, ?, ?) ON CONFLICT(issuer,subject,device_id)
+      DO UPDATE SET value = MAX(excluded.value, value + 1) RETURNING value''',
+          variables: [
+            Variable<String>(account.issuer.toString()),
+            Variable<String>(account.storageKey),
+            Variable<String>(account.deviceId),
+            Variable<int>(_clock().microsecondsSinceEpoch),
+          ],
+        )
+        .getSingle();
+    return 's1:${row.read<int>('value')}:${_id()}';
   }
 
   Future<Map<String, Object?>?> _account(AppBaseAccount account) async {

@@ -1,6 +1,6 @@
 # AppBase protocol semantics
 
-Protocol version: `2026-08-17`.
+Protocol version: `2026-09-27` (legacy transports remain accepted).
 
 ## Identity and authorization
 
@@ -16,9 +16,20 @@ record identifiers are bounded plaintext index metadata. The payload is a
 bounded JSON object encrypted at rest. A delete creates a versioned tombstone;
 it does not erase historical versions immediately.
 
-Each accepted mutation appends exactly one immutable record version. A mutation
-is identified by `(principal, deviceId, mutationId)`. Replaying that identity
-returns the originally accepted change and cannot append another version.
+Each record has one current value or tombstone and a monotonically increasing
+server sequence. A device retains one accepted baseline per record for conflict
+reconciliation and ordered retry fencing. `s1:<order>:<random-id>` mutation IDs
+carry a persisted monotonically increasing device order; callers otherwise treat
+IDs as opaque. Earlier or equal ordered mutations return `replayed` with current
+state and cannot undo a later write. Legacy random IDs retain only deduplication
+identifiers. Legacy retries also return current state after historical payload
+compaction; supported clients acknowledge the outer mutation ID, then pull state.
+A retry does not reapply the original operation. The full historical stream is not an audit API and is no longer retained.
+A single creation baseline per record remains for legacy relational bootstrap;
+legacy traversal returns creation/current pairs, while 2026-09-27 returns only current values. Older revision ancestors may expire;
+the existing absent-ancestor merge behavior applies. Current, creation and per-device baseline payloads stay encrypted. Baselines scale with records and devices,
+not playback save count. Legacy receipt identifiers can grow while old clients
+continue writing; upgrading them to ordered IDs ends that compatibility overhead.
 
 ## Conflict handling
 
@@ -35,7 +46,10 @@ Products that need an order independent of arrival may include:
 {"_sync":{"conflictOrder":["epoch","position"]}}
 ```
 
-Every named field must be numeric in both candidate payloads. Candidates are
+Every named field must be numeric in both candidate payloads, or a UTC ISO
+ timestamp in both. Timestamp comparisons preserve fractional seconds. Optional
+`conflictPolicyVersion` selects the higher-policy candidate's directive during
+migration; absent versions are 1. Candidates are
 compared lexicographically and the greater complete payload wins. At most eight
 fields are allowed. Invalid directives fall back to normal three-way merge.
 
@@ -68,10 +82,18 @@ loss of product projections.
 
 One account sync run is non-overlapping:
 
-1. pull and transactionally apply all available pages;
-2. load the stable ordered outbox;
-3. upload bounded mutation batches and acknowledge only returned mutation ids;
-4. pull again until no next page remains.
+1. discover compatibility before any upload;
+2. load and upload the stable ordered outbox in bounded batches;
+3. atomically acknowledge returned mutation IDs and project canonical responses,
+   preserving any newer pending edit of the same record;
+4. pull current values changed after the checkpoint until no next page remains.
+
+Pulls record current remote revisions/checkpoints without replacing pending local
+intent. Initial traversal returns latest values, not intermediate saved history.
+Relational adapters can stage dependent child records durably until later pages
+supply their prerequisites. A final page with unresolved prerequisites fails
+visibly. The durable checkpoint advances only with its transactionally persisted page; sparse sequence
+numbers after compaction do not invalidate earlier issued cursors.
 
 Transient transport and `5xx` failures retain the outbox and use bounded
 exponential backoff with jitter. Validation, authentication, authorization, and

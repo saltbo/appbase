@@ -37,7 +37,7 @@ function createWorker(env: Env): Hono<{ Bindings: Env; Variables: Variables }> {
     "/appbase",
     createAppBase<Env>({
       publicConfig: {
-        protocolVersions: [APPBASE_PROTOCOL_VERSION],
+        protocolVersions: [APPBASE_PROTOCOL_VERSION, "2026-09-27"],
         issuer: env.APPBASE_ISSUER,
         clientId: env.APPBASE_CLIENT_ID,
         audience: env.APPBASE_AUDIENCE,

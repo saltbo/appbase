@@ -151,3 +151,19 @@ rollout; do not apply the separate normalize_account_ids.sql data step with the 
 valid aliases while database ownership becomes canonical. Protocol wire shapes,
 client storage keys and encrypted contexts remain unchanged for existing users.
 See [the migration runbook](account-uuid-migration.md).
+
+## Current-state sync protocol 2026-09-27
+
+Apply migration 0010 before deploying the new server. New clients explicitly
+require 2026-09-27 before uploading. It changes traversal from an immutable
+version log to current-state traversal and replay responses to canonical current
+state. Identifier and response shapes remain compatible. 2026-08-17 and account
+2026-09-15 callers remain accepted through the compatibility adapter; official
+older clients use replay results to acknowledge IDs and pull current state.
+Their traversal includes one creation baseline per record so parent records exist
+before children. Modern adapters durably stage missing prerequisites across pages.
+Migration keeps sequence high water, current tombstones, per-device baselines
+and legacy deduplication identifiers. A retry of a compacted legacy version must
+not restore old state. Legacy receipts contain no historical payload and are
+removed on account deletion. New ordered clients require no per-save receipts.
+No database cleanup or deployment is implied by local package installation.

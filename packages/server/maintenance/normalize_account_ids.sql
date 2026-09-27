@@ -17,6 +17,12 @@ INSERT INTO appbase_account_uuid_guard
  SELECT count(*) FROM appbase_account_uuid_map m JOIN appbase_accounts a ON a.id=m.new_id;
 UPDATE appbase_records SET owner_sub=(SELECT new_id FROM appbase_account_uuid_map WHERE old_id=appbase_records.owner_sub)
  WHERE owner_sub IN (SELECT old_id FROM appbase_account_uuid_map);
+UPDATE appbase_record_creation_baselines SET owner_sub=(SELECT new_id FROM appbase_account_uuid_map WHERE old_id=appbase_record_creation_baselines.owner_sub)
+WHERE owner_sub IN (SELECT old_id FROM appbase_account_uuid_map);
+UPDATE appbase_device_record_heads SET owner_sub=(SELECT new_id FROM appbase_account_uuid_map WHERE old_id=appbase_device_record_heads.owner_sub)
+WHERE owner_sub IN (SELECT old_id FROM appbase_account_uuid_map);
+UPDATE appbase_legacy_mutations SET owner_sub=(SELECT new_id FROM appbase_account_uuid_map WHERE old_id=appbase_legacy_mutations.owner_sub)
+WHERE owner_sub IN (SELECT old_id FROM appbase_account_uuid_map);
 UPDATE appbase_user_keys SET owner_sub=(SELECT new_id FROM appbase_account_uuid_map WHERE old_id=appbase_user_keys.owner_sub)
  WHERE owner_sub IN (SELECT old_id FROM appbase_account_uuid_map);
 UPDATE appbase_membership_grants SET owner_sub=(SELECT new_id FROM appbase_account_uuid_map WHERE old_id=appbase_membership_grants.owner_sub)

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AppBase Synchronization API
-  version: "2026-09-15"
+  version: "2026-09-27"
   description: Cloudflare-native private record synchronization protocol.
   license:
     name: Apache-2.0
@@ -455,6 +455,10 @@ components:
           type: string
           format: date-time
     MutationResult:
+      description: >-
+        Protocol 2026-09-27 returns canonical current state on replay. Ordered
+        mutation identifiers fence delayed writes. Legacy identifiers remain
+        accepted for compatibility and never reapply an accepted operation.
       type: object
       additionalProperties: false
       required: [mutationId, status, change]

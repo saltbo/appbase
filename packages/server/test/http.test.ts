@@ -12,7 +12,7 @@ import type {
 } from "../src/usecases/ports";
 
 const config: AppBasePublicConfig = {
-  protocolVersions: ["2026-08-17"],
+  protocolVersions: ["2026-08-17", "2026-09-27"],
   issuer: "https://id.example/auth",
   clientId: "client-id",
   audience: "https://api.example",

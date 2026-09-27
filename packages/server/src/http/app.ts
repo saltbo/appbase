@@ -11,7 +11,11 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 
 import { InvalidCursorError } from "../domain/cursor.js";
-import type { JsonObject, SyncMutation } from "../domain/sync.js";
+import {
+  InvalidMutationOrderError,
+  type JsonObject,
+  type SyncMutation,
+} from "../domain/sync.js";
 import {
   MembershipService,
   type MembershipConfig,
@@ -26,6 +30,7 @@ import {
 import { pullChanges, pushMutations, type SyncDeps } from "../usecases/sync.js";
 
 export const APPBASE_PROTOCOL_VERSION = "2026-08-17";
+export const APPBASE_CURRENT_STATE_PROTOCOL_VERSION = "2026-09-27";
 
 const identifierSchema = z
   .string()
@@ -157,6 +162,15 @@ export function createAppBase<TBindings extends object>(
       );
     if (error instanceof AccountDeletedError)
       return problem(options, context, 403, "ACCOUNT_DELETED", error.message);
+    if (error instanceof InvalidMutationOrderError) {
+      return problem(
+        options,
+        context,
+        400,
+        "INVALID_MUTATION_ORDER",
+        error.message,
+      );
+    }
     if (error instanceof InvalidCursorError) {
       return problem(
         options,
@@ -378,6 +392,8 @@ export function createAppBase<TBindings extends object>(
       accountOwner(principal),
       context.req.query("pageToken"),
       pageSize.data,
+      context.req.header("API-Version") !==
+        APPBASE_CURRENT_STATE_PROTOCOL_VERSION,
     );
     return context.json(
       {
@@ -481,6 +497,7 @@ function registerLegacyRoutes<TBindings extends object>(
       accountOwner(principal),
       context.req.query("cursor"),
       limit.data,
+      true,
     );
     return context.json(result, 200, {
       "Cache-Control": "private, no-store",

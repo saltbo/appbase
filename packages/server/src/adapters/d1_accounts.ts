@@ -98,6 +98,9 @@ export class D1AccountRepository implements AccountRepository {
         .bind(id),
       ...[
         "appbase_records",
+        "appbase_record_creation_baselines",
+        "appbase_device_record_heads",
+        "appbase_legacy_mutations",
         "appbase_user_keys",
         "appbase_membership_grants",
         "appbase_membership_usage",

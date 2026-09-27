@@ -1,4 +1,7 @@
-import type { StoredVersion } from "../domain/sync.js";
+import {
+  InvalidMutationOrderError,
+  type StoredVersion,
+} from "../domain/sync.js";
 import type { AppendVersionInput, SyncRepository } from "../usecases/ports.js";
 
 type RecordRow = {
@@ -22,12 +25,30 @@ export class D1SyncRepository implements SyncRepository {
     ownerSub: string,
     deviceId: string,
     mutationId: string,
+    collection?: string,
+    recordId?: string,
   ): Promise<StoredVersion | null> {
+    const order = mutationOrder(mutationId);
+    if (order !== null && collection !== undefined && recordId !== undefined) {
+      const head = await this.database
+        .prepare(
+          `SELECT * FROM appbase_device_record_heads
+        WHERE owner_sub=?1 AND device_id=?2 AND collection=?3 AND record_id=?4 AND mutation_order>=?5`,
+        )
+        .bind(ownerSub, deviceId, collection, recordId, order)
+        .first<RecordRow>();
+      return head === null
+        ? null
+        : this.getCurrent(ownerSub, collection, recordId);
+    }
     const row = await this.database
       .prepare(
-        `SELECT * FROM appbase_records
-       WHERE owner_sub = ?1 AND device_id = ?2 AND mutation_id = ?3
-       LIMIT 1`,
+        `SELECT r.* FROM appbase_device_record_heads h JOIN appbase_records r
+      ON r.owner_sub=h.owner_sub AND r.collection=h.collection AND r.record_id=h.record_id
+      WHERE h.owner_sub=?1 AND h.device_id=?2 AND h.mutation_id=?3
+      UNION ALL SELECT r.* FROM appbase_legacy_mutations m JOIN appbase_records r
+      ON r.owner_sub=m.owner_sub AND r.collection=m.collection AND r.record_id=m.record_id
+      WHERE m.owner_sub=?1 AND m.device_id=?2 AND m.mutation_id=?3 LIMIT 1`,
       )
       .bind(ownerSub, deviceId, mutationId)
       .first<RecordRow>();
@@ -60,7 +81,10 @@ export class D1SyncRepository implements SyncRepository {
       .prepare(
         `SELECT * FROM appbase_records
        WHERE owner_sub = ?1 AND collection = ?2 AND record_id = ?3 AND revision = ?4
-       LIMIT 1`,
+       UNION ALL SELECT * FROM appbase_device_record_heads
+       WHERE owner_sub = ?1 AND collection = ?2 AND record_id = ?3 AND revision = ?4
+       UNION ALL SELECT * FROM appbase_record_creation_baselines
+       WHERE owner_sub = ?1 AND collection = ?2 AND record_id = ?3 AND revision = ?4 LIMIT 1`,
       )
       .bind(ownerSub, collection, recordId, revision)
       .first<RecordRow>();
@@ -72,9 +96,9 @@ export class D1SyncRepository implements SyncRepository {
       .prepare(
         `INSERT INTO appbase_records (
          owner_sub, collection, record_id, device_id, mutation_id, revision,
-         base_revision, payload_json, deleted, created_at
+         base_revision, payload_json, deleted, created_at, mutation_order
        )
-       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?12
        WHERE (
          ?11 IS NULL AND NOT EXISTS (
            SELECT 1 FROM appbase_records
@@ -102,6 +126,7 @@ export class D1SyncRepository implements SyncRepository {
         input.deleted ? 1 : 0,
         input.createdAt,
         input.expectedRevision,
+        mutationOrder(input.mutationId),
       )
       .first<RecordRow>();
     return row === null ? null : mapRow(row);
@@ -111,10 +136,18 @@ export class D1SyncRepository implements SyncRepository {
     ownerSub: string,
     afterSequence: number,
     limit: number,
+    legacy = false,
   ): Promise<StoredVersion[]> {
     const result = await this.database
       .prepare(
-        `SELECT * FROM appbase_records
+        legacy
+          ? `SELECT * FROM (
+          SELECT r.* FROM appbase_records r WHERE r.owner_sub=?1 AND r.sequence>?2
+          UNION ALL SELECT a.* FROM appbase_record_creation_baselines a JOIN appbase_records r
+          ON r.owner_sub=a.owner_sub AND r.collection=a.collection AND r.record_id=a.record_id
+          WHERE a.owner_sub=?1 AND a.sequence>?2 AND a.sequence<r.sequence
+        ) ORDER BY sequence ASC LIMIT ?3`
+          : `SELECT * FROM appbase_records
        WHERE owner_sub = ?1 AND sequence > ?2
        ORDER BY sequence ASC LIMIT ?3`,
       )
@@ -149,4 +182,16 @@ function mapRow(row: RecordRow): StoredVersion {
     deleted: row.deleted === 1,
     createdAt: row.created_at,
   };
+}
+
+function mutationOrder(id: string): number | null {
+  const match = /^s1:([0-9]+):[A-Za-z0-9_-]+$/u.exec(id);
+  if (!match) {
+    if (id.startsWith("s1:")) throw new InvalidMutationOrderError();
+    return null;
+  }
+  const value = Number(match[1]);
+  if (!Number.isSafeInteger(value) || value <= 0)
+    throw new InvalidMutationOrderError();
+  return value;
 }

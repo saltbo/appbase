@@ -45,6 +45,7 @@ beforeAll(async () => {
     "0007_account_deletion.sql",
     "0008_application_accounts.sql",
     "0009_account_uuid_context.sql",
+    "0010_current_sync_state.sql",
   ]) {
     const sql = readFileSync(
       new URL("../migrations/" + migration, import.meta.url),

@@ -2,7 +2,7 @@ import 'dart:collection';
 
 import 'errors.dart';
 
-const appBaseProtocolVersion = '2026-08-17';
+const appBaseProtocolVersion = '2026-09-27';
 const _notProvided = Object();
 
 final class AppBaseClientConfiguration {
