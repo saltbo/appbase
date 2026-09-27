@@ -7,6 +7,39 @@ import {
 import type { JsonObject } from "../src/domain/sync";
 
 describe("D1 envelope key rotation", () => {
+  it("shares account/key reads across concurrent decrypts and isolates owners", async () => {
+    const database = new MemoryD1();
+    const writer = new D1EnvelopeSecretCodec(
+      database as unknown as D1Database,
+      keyring(1),
+    );
+    const envelope = await writer.seal("owner", "notes", "record", {
+      value: "secret",
+    });
+    database.keyReads = 0;
+    let ownerReads = 0;
+    const reader = new D1EnvelopeSecretCodec(
+      database as unknown as D1Database,
+      keyring(1),
+      1,
+      async (owner) => {
+        ownerReads++;
+        return owner;
+      },
+    );
+    const results = await Promise.all(
+      Array.from({ length: 500 }, () =>
+        reader.open("owner", "notes", "record", envelope),
+      ),
+    );
+    expect(results.every((value) => value.value === "secret")).toBe(true);
+    expect(database.keyReads).toBe(1);
+    expect(ownerReads).toBe(1);
+    await expect(
+      reader.open("other", "notes", "record", envelope),
+    ).rejects.toThrow(/authenticated/u);
+  });
+
   it("reencrypts bounded batches, reports usage, and retires old user keys", async () => {
     const database = new MemoryD1();
     const versionOne = new D1EnvelopeSecretCodec(
@@ -124,6 +157,7 @@ type RecordRow = {
 };
 
 class MemoryD1 {
+  keyReads = 0;
   readonly userKeys: UserKey[] = [];
   readonly records: RecordRow[] = [];
 
@@ -147,6 +181,7 @@ class MemoryStatement {
 
   first<T>(): Promise<T | null> {
     if (this.query.startsWith("SELECT wrapped_key")) {
+      this.database.keyReads++;
       const row = this.database.userKeys.find(
         (value) =>
           value.owner_sub === this.values[0] &&
@@ -181,7 +216,8 @@ class MemoryStatement {
       const rows = this.database.records
         .filter((record) => keyVersion(record.payload_json) === version)
         .sort((left, right) => left.sequence - right.sequence)
-        .slice(0, limit);
+        .slice(0, limit)
+        .map((row) => ({ ...row, storage: "appbase_records" }));
       return Promise.resolve(result(rows) as D1Result<T>);
     }
     throw new Error(`Unsupported all query: ${this.query}`);

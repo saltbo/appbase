@@ -1,11 +1,12 @@
 {
   "name": "@saltbo/appbase-server",
-  "version": "0.11.0",
+  "version": "0.12.0-account-uuid.1",
   "description": "Cloudflare-native server framework for AppBase local-first synchronization",
   "type": "module",
   "files": [
     "dist",
-    "migrations"
+    "migrations",
+    "maintenance"
   ],
   "exports": {
     "./admin": {

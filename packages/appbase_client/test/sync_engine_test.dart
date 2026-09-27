@@ -3,6 +3,33 @@ import 'package:appbase_client/appbase_client.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'pending mutations upload before a stalled pull and checkpoint remains intact on failure',
+    () async {
+      final account = _account();
+      final api = _Api();
+      final persistence = _Persistence(account);
+      final gate = Completer<void>();
+      api.pullGate = gate.future;
+      final engine = AppBaseSyncEngine(
+        session: _Session(account),
+        api: api,
+        persistence: persistence,
+        batchIds: _BatchIds(),
+      );
+      final sync = engine.syncNow();
+      await api.pullStarted.future;
+      expect(persistence.pending, isEmpty);
+      expect(api.pushedSizes, [2, 1]);
+      gate.completeError(
+        const AppBaseTransportException(message: 'pull stalled'),
+      );
+      await expectLater(sync, throwsA(isA<AppBaseTransportException>()));
+      expect(engine.state.phase, AppBaseSyncPhase.failed);
+      await engine.close();
+    },
+  );
+
   for (final initiallyFails in [false, true]) {
     test(
       'restored deleted account finishes pending cleanup before forgetting credentials (failure=$initiallyFails)',
@@ -107,7 +134,7 @@ void main() {
 
       expect(api.configurationCalls, 1);
       expect(api.pushedSizes, [2, 1]);
-      expect(api.pullTokens, [null, 'page-2', 'checkpoint-1']);
+      expect(api.pullTokens, [null, 'page-2']);
       expect(engine.state.phase, AppBaseSyncPhase.idle);
       expect(engine.state.account?.checkpoint, 'checkpoint-2');
       await engine.close();
@@ -173,6 +200,8 @@ final class _Api implements AppBaseApi, AppBaseAccountDeletionApi {
   var configurationCalls = 0;
   final pushedSizes = <int>[];
   final pullTokens = <String?>[];
+  Future<void>? pullGate;
+  final pullStarted = Completer<void>();
   @override
   Future<AppBaseClientConfiguration> configuration() async {
     configurationCalls++;
@@ -204,6 +233,8 @@ final class _Api implements AppBaseApi, AppBaseAccountDeletionApi {
       );
     }
     pullTokens.add(pageToken);
+    if (!pullStarted.isCompleted) pullStarted.complete();
+    await pullGate;
     if (pullTokens.length == 1) {
       return const AppBaseChangePage(
         items: [],
@@ -211,10 +242,7 @@ final class _Api implements AppBaseApi, AppBaseAccountDeletionApi {
         nextPageToken: 'page-2',
       );
     }
-    return AppBaseChangePage(
-      items: const [],
-      checkpoint: pullTokens.length == 2 ? 'checkpoint-1' : 'checkpoint-2',
-    );
+    return AppBaseChangePage(items: const [], checkpoint: 'checkpoint-2');
   }
 
   @override

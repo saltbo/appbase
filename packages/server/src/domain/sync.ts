@@ -80,24 +80,54 @@ function preferredPayload(
   server: JsonObject,
   client: JsonObject,
 ): JsonObject | null {
-  const directive = client._sync;
+  const serverDirective = server._sync;
+  const clientDirective = client._sync;
+  const policyVersion = (value: JsonValue | undefined): number =>
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof value.conflictPolicyVersion === "number"
+      ? value.conflictPolicyVersion
+      : 1;
+  const directive =
+    policyVersion(serverDirective) > policyVersion(clientDirective)
+      ? serverDirective
+      : clientDirective;
   if (
     directive === null ||
     typeof directive !== "object" ||
     Array.isArray(directive)
   )
     return null;
+  const retainPolicy = (payload: JsonObject): JsonObject =>
+    policyVersion(payload._sync) < policyVersion(directive)
+      ? { ...payload, _sync: directive }
+      : payload;
   const order = directive.conflictOrder;
   if (!Array.isArray(order) || order.length === 0 || order.length > 8)
     return null;
   for (const field of order) {
     if (typeof field !== "string") return null;
-    const serverValue = server[field];
-    const clientValue = client[field];
-    if (typeof serverValue !== "number" || typeof clientValue !== "number")
+    if (typeof server[field] !== typeof client[field]) return null;
+    const comparable = (value: JsonValue | undefined): number | null => {
+      if (typeof value === "number" && Number.isFinite(value)) return value;
+      if (
+        typeof value === "string" &&
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u.test(value)
+      ) {
+        const time = Date.parse(value);
+        const fraction = /\.(\d+)Z$/u.exec(value)?.[1] ?? "";
+        const submillisecond =
+          (Number(fraction.padEnd(9, "0").slice(0, 9)) % 1000000) / 1000000;
+        return Number.isFinite(time) ? time + submillisecond : null;
+      }
       return null;
-    if (clientValue > serverValue) return client;
-    if (clientValue < serverValue) return server;
+    };
+    const serverValue = comparable(server[field]);
+    const clientValue = comparable(client[field]);
+    if (serverValue === null || clientValue === null) return null;
+    if (clientValue > serverValue) return retainPolicy(client);
+    if (clientValue < serverValue) return retainPolicy(server);
   }
   return null;
 }
@@ -107,4 +137,29 @@ function jsonEquals(
   right: JsonValue | undefined,
 ): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+export class InvalidMutationOrderError extends Error {
+  constructor() {
+    super(
+      "An ordered mutation ID must contain a positive safe integer sequence.",
+    );
+    this.name = "InvalidMutationOrderError";
+  }
+}
+
+export function retainConflictPolicy(
+  payload: JsonObject | null,
+  previous: JsonObject | null,
+): JsonObject | null {
+  const version = (value: JsonValue | undefined): number =>
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof value.conflictPolicyVersion === "number"
+      ? value.conflictPolicyVersion
+      : 1;
+  if (payload && previous && version(previous._sync) > version(payload._sync))
+    return { ...payload, _sync: previous._sync! };
+  return payload;
 }

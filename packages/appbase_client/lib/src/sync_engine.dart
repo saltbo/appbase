@@ -142,21 +142,11 @@ final class AppBaseSyncEngine {
       }
       final config = await api.configuration();
       config.requireCompatible(appBaseProtocolVersion);
-      account = await _pullAll(account, token, config.maxChangesPerPage);
+      await _pushAll(account, token, config.maxMutationsPerBatch);
       while (true) {
-        final pending = await persistence.loadPending(
-          account,
-          limit: config.maxMutationsPerBatch,
-        );
-        if (pending.isEmpty) break;
-        final results = await api.push(
-          accessToken: token,
-          batchId: batchIds.next(),
-          mutations: pending,
-        );
-        await persistence.acknowledge(account, results);
+        account = await _pullAll(account, token, config.maxChangesPerPage);
+        if (!await _pushAll(account, token, config.maxMutationsPerBatch)) break;
       }
-      account = await _pullAll(account, token, config.maxChangesPerPage);
       _set(AppBaseSyncState.idle(account: account));
     } on AppBaseException catch (error) {
       if (error is AppBaseApiException &&
@@ -223,6 +213,25 @@ final class AppBaseSyncEngine {
         ),
       );
       throw failure;
+    }
+  }
+
+  Future<bool> _pushAll(
+    AppBaseAccount account,
+    String token,
+    int batchSize,
+  ) async {
+    var pushed = false;
+    while (true) {
+      final pending = await persistence.loadPending(account, limit: batchSize);
+      if (pending.isEmpty) return pushed;
+      final results = await api.push(
+        accessToken: token,
+        batchId: batchIds.next(),
+        mutations: pending,
+      );
+      await persistence.acknowledge(account, results);
+      pushed = true;
     }
   }
 

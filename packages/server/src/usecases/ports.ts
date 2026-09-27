@@ -9,6 +9,8 @@ export interface SyncRepository {
     ownerSub: string,
     deviceId: string,
     mutationId: string,
+    collection?: string,
+    recordId?: string,
   ): Promise<StoredVersion | null>;
   getCurrent(
     ownerSub: string,
@@ -26,6 +28,7 @@ export interface SyncRepository {
     ownerSub: string,
     afterSequence: number,
     limit: number,
+    legacy?: boolean,
   ): Promise<StoredVersion[]>;
 }
 

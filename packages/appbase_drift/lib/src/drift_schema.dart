@@ -24,6 +24,8 @@ final class AppBaseDriftTables {
   final String records;
   final String outbox;
   final String checkpoint;
+  String get mutationClock => '${outbox}_clock';
+  String get deferredProjections => '${records}_projections';
 
   void validate() {
     for (final name in [syncState, records, outbox, checkpoint]) {
@@ -107,6 +109,19 @@ extension AppBaseDriftSchema on GeneratedDatabase {
       await customStatement('''
         CREATE INDEX IF NOT EXISTS ${tables.outbox}_account_created
         ON ${tables.outbox}(issuer, subject, created_at)
+      ''');
+      await customStatement('''
+        CREATE TABLE IF NOT EXISTS ${tables.deferredProjections} (
+          issuer TEXT NOT NULL, subject TEXT NOT NULL, collection TEXT NOT NULL,
+          record_id TEXT NOT NULL, change_sequence INTEGER NOT NULL, change_json TEXT NOT NULL,
+          PRIMARY KEY (issuer,subject,collection,record_id)
+        )
+      ''');
+      await customStatement('''
+        CREATE TABLE IF NOT EXISTS ${tables.mutationClock} (
+          issuer TEXT NOT NULL, subject TEXT NOT NULL, device_id TEXT NOT NULL,
+          value INTEGER NOT NULL, PRIMARY KEY (issuer, subject, device_id)
+        )
       ''');
       await customStatement('''
         CREATE INDEX IF NOT EXISTS ${tables.outbox}_record

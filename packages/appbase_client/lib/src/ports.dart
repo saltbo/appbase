@@ -97,3 +97,12 @@ abstract interface class AppBaseRegistrationSession {
 abstract interface class AppBaseSessionEvents {
   Stream<void> get invalidations;
 }
+
+/// Optional relational projection readiness. Missing prerequisites are staged
+/// transactionally until later pages supply them; malformed input must throw.
+abstract interface class AppBaseProjectionReadiness {
+  Future<bool> readyForProjection(
+    AppBaseAccount account,
+    AppBaseRemoteChange change,
+  );
+}

@@ -10,6 +10,7 @@ import {
 } from "./account_deletion.js";
 
 export type ApplicationAccount = {
+  clientId?: string | null;
   id: string;
   subject: string | null;
   status: "active" | "deleting" | "deleted";
@@ -38,6 +39,7 @@ export interface AccountRepository extends AccountDeletionRepository {
   expireSessions(now: number): Promise<void>;
 }
 export interface AccountCrypto {
+  accountId(): string;
   random(): string;
   hash(value: string): Promise<string>;
 }
@@ -64,7 +66,7 @@ export class AccountService {
   async status(principal: Principal) {
     const account = await this.repository.current(principal.sub);
     return account
-      ? { accountId: account.id, status: account.status }
+      ? { accountId: account.clientId ?? account.id, status: account.status }
       : { accountId: null, status: "unregistered" as const };
   }
   async open(
@@ -100,7 +102,7 @@ export class AccountService {
         );
       account = await this.repository.register(
         principal.sub,
-        `a_${this.crypto.random()}`,
+        this.crypto.accountId(),
         this.now(),
       );
     }
@@ -123,7 +125,7 @@ export class AccountService {
       this.now(),
     );
     return {
-      accountId: account.id,
+      accountId: account.clientId ?? account.id,
       accessToken: token,
       expiresAt,
       status: "active" as const,
